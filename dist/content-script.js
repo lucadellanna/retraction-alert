@@ -6,6 +6,8 @@
     "withdrawn",
     "expression_of_concern"
   ]);
+  var MAX_REFERENCE_CONCURRENCY = 4;
+  var SUPPORT_URL = "https://Luca-Dellanna.com/contact";
   function logDebug(...args) {
     console.debug("[RetractionAlert]", ...args);
   }
@@ -13,7 +15,8 @@
     const normalized = label.toLowerCase();
     if (normalized.includes("retract")) return "retracted";
     if (normalized.includes("withdraw")) return "withdrawn";
-    if (normalized.includes("expression of concern")) return "expression_of_concern";
+    if (normalized.includes("expression of concern"))
+      return "expression_of_concern";
     return "ok";
   }
   function findAlertInTexts(texts) {
@@ -24,14 +27,79 @@
     }
     return null;
   }
+  function detectAlertFromMessage(message) {
+    const assertions = message?.assertion ?? [];
+    const updates = message?.["update-to"] ?? [];
+    const relations = message?.relation ?? [];
+    const assertionList = Array.isArray(assertions) ? assertions : [];
+    const updateList = Array.isArray(updates) ? updates : [];
+    const relationList = Array.isArray(relations) ? relations : [];
+    logDebug("parsed Crossref payload", {
+      assertionCount: assertionList.length,
+      updateCount: updateList.length,
+      relationCount: relationList.length
+    });
+    for (const item of assertionList) {
+      if (!item || typeof item !== "object") continue;
+      const label = item.label ?? "";
+      const value = item.value ?? "";
+      const name = item.name ?? "";
+      const candidate = findAlertInTexts([label, value, name]);
+      if (candidate) {
+        const noticeUrl = item.URL ?? item.url ?? (value.startsWith("http") ? value : void 0);
+        return {
+          status: candidate.status,
+          label: candidate.match,
+          noticeUrl
+        };
+      }
+    }
+    for (const item of updateList) {
+      if (!item || typeof item !== "object") continue;
+      const type = item.type ?? "";
+      const label = item.label ?? "";
+      const candidate = findAlertInTexts([type, label]);
+      if (candidate) {
+        const updateDoi = item.DOI;
+        const noticeUrl = item.URL ?? item.url ?? (typeof updateDoi === "string" ? `https://doi.org/${updateDoi}` : void 0);
+        return {
+          status: candidate.status,
+          label: candidate.match,
+          noticeUrl
+        };
+      }
+    }
+    for (const item of relationList) {
+      if (!item || typeof item !== "object") continue;
+      const type = item.type ?? "";
+      const label = item.label ?? "";
+      const candidate = findAlertInTexts([type, label]);
+      if (candidate) {
+        const relId = item.id;
+        const relUrl = item.url ?? (typeof relId === "string" ? relId : void 0);
+        return {
+          status: candidate.status,
+          label: candidate.match,
+          noticeUrl: relUrl
+        };
+      }
+    }
+    return { status: "ok" };
+  }
   async function fetchCrossrefMessage(doi) {
     if (!doi.startsWith("10.")) return null;
     const encodedIdPath = encodeURIComponent(doi).replace(/%2F/g, "/");
     const worksUrl = `https://api.crossref.org/v1/works/${encodedIdPath}`;
-    const filterUrl = `https://api.crossref.org/v1/works?filter=doi:${encodeURIComponent(doi)}&rows=1`;
+    const filterUrl = `https://api.crossref.org/v1/works?filter=doi:${encodeURIComponent(
+      doi
+    )}&rows=1`;
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     async function fetchWork(targetUrl) {
       try {
-        const res = await fetch(targetUrl, { headers: { Accept: "application/json" }, cache: "no-store" });
+        const res = await fetch(targetUrl, {
+          headers: { Accept: "application/json" },
+          cache: "no-store"
+        });
         if (!res.ok) return { ok: false, status: res.status, data: null };
         const data2 = await res.json();
         return { ok: true, status: res.status, data: data2 };
@@ -42,15 +110,42 @@
     }
     let data = null;
     try {
-      const primary = await fetchWork(worksUrl);
-      logDebug("fetch worksUrl", worksUrl, "ok:", primary.ok, "status:", primary.status);
-      data = primary.data;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const primary = await fetchWork(worksUrl);
+        logDebug(
+          "fetch worksUrl",
+          worksUrl,
+          "ok:",
+          primary.ok,
+          "status:",
+          primary.status,
+          "attempt:",
+          attempt + 1
+        );
+        data = primary.data;
+        if (data || primary.ok) break;
+        await sleep(200 * (attempt + 1));
+      }
       if (!data) {
-        const fallback = await fetchWork(filterUrl);
-        logDebug("fetch filterUrl", filterUrl, "ok:", fallback.ok, "status:", fallback.status);
-        data = fallback.data;
-        if (data?.message?.items?.length) {
-          data = { message: data.message.items[0] };
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const fallback = await fetchWork(filterUrl);
+          logDebug(
+            "fetch filterUrl",
+            filterUrl,
+            "ok:",
+            fallback.ok,
+            "status:",
+            fallback.status,
+            "attempt:",
+            attempt + 1
+          );
+          data = fallback.data;
+          if (data?.message?.items?.length) {
+            data = { message: data.message.items[0] };
+            break;
+          }
+          if (data) break;
+          await sleep(200 * (attempt + 1));
         }
       }
     } catch (error) {
@@ -64,65 +159,9 @@
     const message = await fetchCrossrefMessage(id);
     if (!message) return { status: "unknown" };
     try {
-      const assertions = message?.assertion ?? [];
-      const updates = message?.["update-to"] ?? [];
-      const assertionList = Array.isArray(assertions) ? assertions : [];
-      const updateList = Array.isArray(updates) ? updates : [];
-      logDebug("parsed Crossref payload", {
-        assertionCount: assertionList.length,
-        updateCount: updateList.length
-      });
-      let mappedStatus = "ok";
-      let labelSource = "";
-      let noticeUrl;
-      let assertionHit;
-      let updateHit;
-      for (const item of assertionList) {
-        if (!item || typeof item !== "object") continue;
-        const label = item.label ?? "";
-        const value = item.value ?? "";
-        const name = item.name ?? "";
-        const candidate = findAlertInTexts([label, value, name]);
-        if (candidate) {
-          mappedStatus = candidate.status;
-          labelSource = candidate.match;
-          noticeUrl = item.URL ?? item.url ?? (value.startsWith("http") ? value : void 0);
-          assertionHit = item;
-          break;
-        }
-      }
-      if (mappedStatus === "ok") {
-        for (const item of updateList) {
-          if (!item || typeof item !== "object") continue;
-          const type = item.type ?? "";
-          const label = item.label ?? "";
-          const candidate = findAlertInTexts([type, label]);
-          if (candidate) {
-            mappedStatus = candidate.status;
-            labelSource = candidate.match;
-            const updateDoi = item.DOI;
-            noticeUrl = item.URL ?? item.url ?? (typeof updateDoi === "string" ? `https://doi.org/${updateDoi}` : void 0);
-            updateHit = item;
-            break;
-          }
-        }
-      }
-      logDebug("checkStatus result", {
-        id,
-        mappedStatus,
-        labelSource,
-        noticeUrl,
-        assertionHit,
-        updateHit
-      });
-      if (mappedStatus !== "ok") {
-        return {
-          status: mappedStatus,
-          label: labelSource || void 0,
-          noticeUrl
-        };
-      }
-      return { status: "ok" };
+      const detected = detectAlertFromMessage(message);
+      logDebug("checkStatus result", { id, detected });
+      return detected;
     } catch (error) {
       logDebug("checkStatus error", error);
       return { status: "unknown" };
@@ -130,28 +169,48 @@
   }
   async function checkReferences(doi) {
     const message = await fetchCrossrefMessage(doi);
-    if (!message) return { alerts: [], checked: 0, totalFound: 0 };
+    if (!message) return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
     const references = message.reference ?? [];
     const refList = Array.isArray(references) ? references : [];
     const dois = refList.map((ref) => {
       if (!ref || typeof ref !== "object") return null;
       const doiValue = ref.DOI;
-      if (typeof doiValue === "string" && doiValue.startsWith("10.")) return doiValue;
+      if (typeof doiValue === "string" && doiValue.startsWith("10."))
+        return doiValue;
       return null;
     }).filter((val) => Boolean(val));
     const uniqueDois = Array.from(new Set(dois));
-    logDebug("checking references", { totalFound: dois.length, checking: uniqueDois.length });
+    logDebug("checking references", {
+      totalFound: dois.length,
+      checking: uniqueDois.length
+    });
     const results = [];
     let checked = 0;
-    for (const refDoi of uniqueDois) {
-      const status = await checkStatus(refDoi);
-      checked += 1;
-      updateReferenceProgress(checked, uniqueDois.length);
-      if (ALERT_STATUSES.has(status.status)) {
-        results.push({ id: refDoi, status: status.status, noticeUrl: status.noticeUrl, label: status.label });
+    let failedChecks = 0;
+    let index = 0;
+    const worker = async () => {
+      while (index < uniqueDois.length) {
+        const current = index++;
+        const refDoi = uniqueDois[current];
+        const status = await checkStatus(refDoi);
+        checked += 1;
+        if (status.status === "unknown") {
+          failedChecks += 1;
+        } else if (ALERT_STATUSES.has(status.status)) {
+          results.push({
+            id: refDoi,
+            status: status.status,
+            noticeUrl: status.noticeUrl,
+            label: status.label
+          });
+        }
+        updateReferenceProgress(checked, uniqueDois.length);
       }
-    }
-    return { alerts: results, checked, totalFound: dois.length };
+    };
+    const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, uniqueDois.length || 1);
+    const workers = Array.from({ length: concurrency }, () => worker());
+    await Promise.all(workers);
+    return { alerts: results, checked, totalFound: dois.length, failedChecks };
   }
   function extractDoiFromDoiOrg() {
     if (!location.hostname.endsWith("doi.org")) return null;
@@ -229,7 +288,7 @@
     const parsedPadding = Number.parseFloat(currentPaddingTop) || 0;
     document.body.style.paddingTop = `${parsedPadding + bannerHeight}px`;
   }
-  function injectReferencesBanner(alerts, checked, totalFound) {
+  function injectReferencesBanner(alerts, checked, totalFound, failedChecks) {
     if (document.getElementById("retraction-alert-ref-banner")) return;
     const primary = document.getElementById("retraction-alert-banner");
     const offset = primary ? primary.getBoundingClientRect().height : 0;
@@ -246,7 +305,7 @@
     banner.style.alignItems = "center";
     banner.style.gap = "0.4rem";
     banner.style.padding = "10px 14px";
-    banner.style.backgroundColor = alerts.length ? "#8b0000" : "#1b5e20";
+    banner.style.backgroundColor = alerts.length ? "#8b0000" : failedChecks > 0 ? "#fbc02d" : "#1b5e20";
     banner.style.color = "#ffffff";
     banner.style.fontFamily = "Arial, sans-serif";
     banner.style.fontSize = "14px";
@@ -255,6 +314,8 @@
     const text = document.createElement("span");
     if (alerts.length) {
       text.textContent = `\u26A0\uFE0F Cited retracted/flagged papers found (${alerts.length}).`;
+    } else if (failedChecks > 0) {
+      text.textContent = `\u26A0\uFE0F Citation check incomplete (failed ${failedChecks} of ${totalFound || checked || failedChecks}).`;
     } else {
       text.textContent = `\u2705 Checked ${checked} of ${totalFound || checked} citations: no retractions found.`;
     }
@@ -306,6 +367,21 @@
         });
         banner.appendChild(button);
       }
+    } else if (failedChecks > 0) {
+      const notifyButton = document.createElement("button");
+      notifyButton.textContent = "Notify maintainer";
+      notifyButton.style.border = "none";
+      notifyButton.style.cursor = "pointer";
+      notifyButton.style.background = "#ffe082";
+      notifyButton.style.color = "#4e342e";
+      notifyButton.style.fontWeight = "bold";
+      notifyButton.style.padding = "6px 10px";
+      notifyButton.style.borderRadius = "6px";
+      notifyButton.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+      notifyButton.addEventListener("click", () => {
+        window.open(SUPPORT_URL, "_blank", "noreferrer");
+      });
+      banner.appendChild(notifyButton);
     }
     document.body.appendChild(banner);
     const bannerHeight = banner.getBoundingClientRect().height;
@@ -316,7 +392,9 @@
   function extractCorrespondingEmail() {
     const metaEmail = document.querySelector('meta[name="citation_author_email"]')?.getAttribute("content");
     if (metaEmail) return metaEmail.trim();
-    const mailLink = document.querySelector('a[href^="mailto:"]');
+    const mailLink = document.querySelector(
+      'a[href^="mailto:"]'
+    );
     const href = mailLink?.getAttribute("href");
     if (href && href.startsWith("mailto:")) {
       const email = href.replace(/^mailto:/i, "").split("?")[0];
@@ -329,7 +407,7 @@
     const bodyLines = [
       `Hello,`,
       ``,
-      `While reviewing ${articleId}, I noticed the following cited papers are marked as retracted/flagged:`,
+      `While reviewing your paper, ${articleId}, I noticed the following cited papers are marked as retracted/flagged:`,
       ...alerts.map((a) => `- ${a.id}`),
       ``,
       `Thought you might want to know.`,
@@ -337,10 +415,14 @@
       `Sent via Retraction Alert`
     ];
     const body = bodyLines.join("\n");
-    return `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    return `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`;
   }
   function ensureReferenceProgressBanner() {
-    const existing = document.getElementById("retraction-alert-ref-progress");
+    const existing = document.getElementById(
+      "retraction-alert-ref-progress"
+    );
     if (existing) return existing;
     const primary = document.getElementById("retraction-alert-banner");
     const offset = primary ? primary.getBoundingClientRect().height : 0;
@@ -392,7 +474,9 @@
     if (total <= 0) return;
     const banner = ensureReferenceProgressBanner();
     const label = document.getElementById("retraction-alert-ref-progress-label");
-    const bar = document.getElementById("retraction-alert-ref-progress-bar");
+    const bar = document.getElementById(
+      "retraction-alert-ref-progress-bar"
+    );
     if (label) {
       label.textContent = `Checking citations... (${done}/${total})`;
     }
@@ -403,10 +487,15 @@
     if (done >= total) {
       setTimeout(() => {
         banner.remove();
-        const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
+        const currentPaddingTop = window.getComputedStyle(
+          document.body
+        ).paddingTop;
         const parsedPadding = Number.parseFloat(currentPaddingTop) || 0;
         const height = banner.getBoundingClientRect().height;
-        document.body.style.paddingTop = `${Math.max(0, parsedPadding - height)}px`;
+        document.body.style.paddingTop = `${Math.max(
+          0,
+          parsedPadding - height
+        )}px`;
       }, 400);
     }
   }
@@ -426,7 +515,12 @@
     }
     if (id.startsWith("10.")) {
       const referenceResult = await checkReferences(id);
-      injectReferencesBanner(referenceResult.alerts, referenceResult.checked, referenceResult.totalFound);
+      injectReferencesBanner(
+        referenceResult.alerts,
+        referenceResult.checked,
+        referenceResult.totalFound,
+        referenceResult.failedChecks
+      );
       if (referenceResult.alerts.length) {
         logDebug("Reference banner injected", referenceResult.alerts);
       } else {
