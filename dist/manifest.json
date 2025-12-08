@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Retraction Alert",
+  "version": "0.1.0",
+  "description": "Warns when the article being viewed has been officially retracted or flagged.",
+  "icons": {
+    "128": "icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://doi.org/*",
+        "https://pubmed.ncbi.nlm.nih.gov/*",
+        "https://*.nature.com/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": ["https://api.crossref.org/*"]
+}
