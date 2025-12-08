@@ -11,7 +11,8 @@
       "matches": [
         "https://doi.org/*",
         "https://pubmed.ncbi.nlm.nih.gov/*",
-        "https://*.nature.com/*"
+        "https://*.nature.com/*",
+        "https://www.thelancet.com/*"
       ],
       "js": ["content-script.js"],
       "run_at": "document_idle"

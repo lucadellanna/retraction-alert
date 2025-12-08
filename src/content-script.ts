@@ -12,8 +12,6 @@ const ALERT_STATUSES: Set<ArticleStatus> = new Set([
   "expression_of_concern"
 ]);
 
-const MAX_REFERENCE_CHECKS = 20;
-
 function logDebug(...args: unknown[]): void {
   // Prefix to make filtering easy in DevTools.
   console.debug("[RetractionAlert]", ...args);
@@ -186,7 +184,7 @@ async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
     })
     .filter((val): val is string => Boolean(val));
 
-  const uniqueDois = Array.from(new Set(dois)).slice(0, MAX_REFERENCE_CHECKS);
+  const uniqueDois = Array.from(new Set(dois));
   logDebug("checking references", { totalFound: dois.length, checking: uniqueDois.length });
 
   const results: Array<{ id: string; status: ArticleStatus; noticeUrl?: string; label?: string }> = [];
@@ -222,6 +220,17 @@ function extractNatureDoiFromPath(): string | null {
   const suffix = match[1];
   if (!suffix) return null;
   return `10.1038/${suffix}`;
+}
+
+function extractLancetDoiFromPath(): string | null {
+  if (!location.hostname.endsWith("thelancet.com")) return null;
+  // Example path: /journals/lancet/article/PIIS0140-6736(24)01822-1/abstract
+  const piiMatch = location.pathname.match(/\/PII([A-Za-z0-9().-]+)/i);
+  if (!piiMatch) return null;
+  const pii = piiMatch[1];
+  // Lancet PII often maps to DOI 10.1016/S...
+  const doiStem = pii.startsWith("S") ? pii : pii.replace(/^P?II/, ""); // normalize
+  return `10.1016/${doiStem}`;
 }
 
 function extractPmid(): string | null {
@@ -423,7 +432,12 @@ function updateReferenceProgress(done: number, total: number): void {
 }
 
 async function run(): Promise<void> {
-  const id = extractDoiFromDoiOrg() ?? extractMetaDoi() ?? extractNatureDoiFromPath() ?? extractPmid();
+  const id =
+    extractDoiFromDoiOrg() ??
+    extractMetaDoi() ??
+    extractNatureDoiFromPath() ??
+    extractLancetDoiFromPath() ??
+    extractPmid();
   if (!id) {
     logDebug("No DOI/PMID found on this page");
     return;

@@ -6,7 +6,6 @@
     "withdrawn",
     "expression_of_concern"
   ]);
-  var MAX_REFERENCE_CHECKS = 20;
   function logDebug(...args) {
     console.debug("[RetractionAlert]", ...args);
   }
@@ -140,7 +139,7 @@
       if (typeof doiValue === "string" && doiValue.startsWith("10.")) return doiValue;
       return null;
     }).filter((val) => Boolean(val));
-    const uniqueDois = Array.from(new Set(dois)).slice(0, MAX_REFERENCE_CHECKS);
+    const uniqueDois = Array.from(new Set(dois));
     logDebug("checking references", { totalFound: dois.length, checking: uniqueDois.length });
     const results = [];
     let checked = 0;
@@ -171,6 +170,14 @@
     const suffix = match[1];
     if (!suffix) return null;
     return `10.1038/${suffix}`;
+  }
+  function extractLancetDoiFromPath() {
+    if (!location.hostname.endsWith("thelancet.com")) return null;
+    const piiMatch = location.pathname.match(/\/PII([A-Za-z0-9().-]+)/i);
+    if (!piiMatch) return null;
+    const pii = piiMatch[1];
+    const doiStem = pii.startsWith("S") ? pii : pii.replace(/^P?II/, "");
+    return `10.1016/${doiStem}`;
   }
   function extractPmid() {
     if (!location.hostname.endsWith("pubmed.ncbi.nlm.nih.gov")) return null;
@@ -344,7 +351,7 @@
     }
   }
   async function run() {
-    const id = extractDoiFromDoiOrg() ?? extractMetaDoi() ?? extractNatureDoiFromPath() ?? extractPmid();
+    const id = extractDoiFromDoiOrg() ?? extractMetaDoi() ?? extractNatureDoiFromPath() ?? extractLancetDoiFromPath() ?? extractPmid();
     if (!id) {
       logDebug("No DOI/PMID found on this page");
       return;
