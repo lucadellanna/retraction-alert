@@ -34,6 +34,23 @@ const NEWS_CONTACTS: Record<string, string> = {
   "latimes.com": "readers.rep@latimes.com",
   "nbcnews.com": "tips@nbcuni.com",
   "cnn.com": "cnntips@cnn.com",
+  "abc.net.au": "",
+  "elpais.com": "",
+  "elmundo.es": "",
+  "lavanguardia.com": "",
+  "faz.net": "",
+  "globo.com": "",
+  "lemonde.fr": "",
+  "lefigaro.fr": "",
+  "lastampa.it": "",
+  "repubblica.it": "",
+  "bild.de": "",
+  "zeit.de": "",
+  "spiegel.de": "",
+  "theage.com.au": "",
+  "telegraph.co.uk": "",
+  "independent.co.uk": "",
+  "thetimes.co.uk": "",
 };
 
 function logDebug(...args: unknown[]): void {
@@ -311,6 +328,7 @@ interface ReferenceCheckResult {
     status: ArticleStatus;
     noticeUrl?: string;
     label?: string;
+    title?: string;
   }>;
   checked: number;
   totalFound: number;
@@ -1283,6 +1301,24 @@ function updateReferenceProgress(done: number, total: number): void {
 async function run(): Promise<void> {
   const { article, citations } = ensureBanners();
   const newsHosts = [
+    "abc.net.au",
+    "elpais.com",
+    "elmundo.es",
+    "lavanguardia.com",
+    "faz.net",
+    "globo.com",
+    "corriere.it",
+    "lemonde.fr",
+    "lefigaro.fr",
+    "lastampa.it",
+    "repubblica.it",
+    "bild.de",
+    "zeit.de",
+    "spiegel.de",
+    "theage.com.au",
+    "telegraph.co.uk",
+    "independent.co.uk",
+    "thetimes.co.uk",
     "wsj.com",
     "theguardian.com",
     "nytimes.com",
@@ -1444,7 +1480,9 @@ async function run(): Promise<void> {
       if (referenceResult.alerts.length) {
         referenceAlerts.push(
           ...referenceResult.alerts.map((alert) => ({
-            ...alert,
+            id: alert.id,
+            status: alert.status,
+            noticeUrl: alert.noticeUrl,
             title: alert.title
               ? `${alert.title} (cited by ${doi})`
               : `${alert.id} (cited by ${doi})`,
