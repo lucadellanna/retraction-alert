@@ -28,7 +28,10 @@
         "https://arxiv.org/*",
         "https://www.biorxiv.org/*",
         "https://www.medrxiv.org/*",
-        "https://osf.io/*"
+        "https://osf.io/*",
+        "https://academic.oup.com/*",
+        "https://psycnet.apa.org/*",
+        "https://www.cambridge.org/*"
       ],
       "js": [
         "content-script.js"
