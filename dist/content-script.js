@@ -799,8 +799,14 @@
       const worksResult = await checkOrcidWorks(orcidId);
       const allDois = await fetchOrcidDois(orcidId);
       const citationsResult = await checkCitedRetractedFromWorks(allDois);
+      const worksHasEoc = worksResult.alerts.some(
+        (a) => a.status === "expression_of_concern"
+      );
+      const citationsHasEoc = citationsResult.alerts.some(
+        (a) => a.status === "expression_of_concern"
+      );
       updateBanner(article, {
-        bg: worksResult.alerts.length ? "#8b0000" : worksResult.failedChecks ? "#fbc02d" : "#1b5e20",
+        bg: worksHasEoc ? "#8b0000" : worksResult.failedChecks ? "#fbc02d" : "#1b5e20",
         lines: [
           countsSummary(
             "Works",
@@ -812,7 +818,7 @@
         alerts: worksResult.alerts
       });
       updateBanner(citations, {
-        bg: citationsResult.alerts.length ? "#8b0000" : citationsResult.failedChecks ? "#fbc02d" : "#1b5e20",
+        bg: citationsHasEoc ? "#8b0000" : citationsResult.alerts.length ? "#8b0000" : citationsResult.failedChecks ? "#fbc02d" : "#1b5e20",
         lines: [
           countsSummary(
             "Citations",

@@ -1310,8 +1310,14 @@ async function run(): Promise<void> {
     const worksResult = await checkOrcidWorks(orcidId);
     const allDois = await fetchOrcidDois(orcidId);
     const citationsResult = await checkCitedRetractedFromWorks(allDois);
+    const worksHasEoc = worksResult.alerts.some(
+      (a) => a.status === "expression_of_concern"
+    );
+    const citationsHasEoc = citationsResult.alerts.some(
+      (a) => a.status === "expression_of_concern"
+    );
     updateBanner(article, {
-      bg: worksResult.alerts.length
+      bg: worksHasEoc
         ? "#8b0000"
         : worksResult.failedChecks
         ? "#fbc02d"
@@ -1327,7 +1333,9 @@ async function run(): Promise<void> {
       alerts: worksResult.alerts,
     });
     updateBanner(citations, {
-      bg: citationsResult.alerts.length
+      bg: citationsHasEoc
+        ? "#8b0000"
+        : citationsResult.alerts.length
         ? "#8b0000"
         : citationsResult.failedChecks
         ? "#fbc02d"
