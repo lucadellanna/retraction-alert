@@ -46,5 +46,9 @@
   "host_permissions": [
     "https://api.crossref.org/*",
     "https://pub.orcid.org/*"
-  ]
+  ],
+  "action": {
+    "default_popup": "options.html",
+    "default_title": "Retraction Alert"
+  }
 }

@@ -7,6 +7,7 @@
     "expression_of_concern"
   ]);
   var MAX_REFERENCE_CONCURRENCY = 4;
+  var MAX_REFERENCED_DOIS = 1e4;
   var SUPPORT_URL = "https://Luca-Dellanna.com/contact";
   var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
   function logDebug(...args) {
@@ -216,7 +217,8 @@
   }
   async function checkReferences(doi) {
     const message = await fetchCrossrefMessage(doi);
-    if (!message) return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+    if (!message)
+      return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
     const references = message.reference ?? [];
     const refList = Array.isArray(references) ? references : [];
     const dois = refList.map((ref) => {
@@ -254,7 +256,10 @@
         updateReferenceProgress(checked, uniqueDois.length);
       }
     };
-    const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, uniqueDois.length || 1);
+    const concurrency = Math.min(
+      MAX_REFERENCE_CONCURRENCY,
+      uniqueDois.length || 1
+    );
     const workers = Array.from({ length: concurrency }, () => worker());
     await Promise.all(workers);
     return { alerts: results, checked, totalFound: dois.length, failedChecks };
@@ -266,10 +271,13 @@
       return cached;
     }
     try {
-      const res = await fetch(`https://pub.orcid.org/v3.0/${encodeURIComponent(orcidId)}/works`, {
-        headers: { Accept: "application/json" },
-        cache: "no-store"
-      });
+      const res = await fetch(
+        `https://pub.orcid.org/v3.0/${encodeURIComponent(orcidId)}/works`,
+        {
+          headers: { Accept: "application/json" },
+          cache: "no-store"
+        }
+      );
       if (!res.ok) {
         logDebug("orcid fetch failed", res.status);
         return [];
@@ -332,6 +340,58 @@
     await Promise.all(workers);
     return { alerts: results, checked, totalFound: dois.length, failedChecks };
   }
+  async function collectReferencedDois(dois) {
+    const refs = /* @__PURE__ */ new Set();
+    for (const doi of dois) {
+      const message = await fetchCrossrefMessage(doi);
+      const references = message?.reference ?? [];
+      const refList = Array.isArray(references) ? references : [];
+      for (const ref of refList) {
+        if (!ref || typeof ref !== "object") continue;
+        const doiValue = ref.DOI;
+        if (typeof doiValue === "string" && doiValue.startsWith("10.")) {
+          refs.add(doiValue);
+          if (refs.size >= MAX_REFERENCED_DOIS) return Array.from(refs);
+        }
+      }
+      if (refs.size >= MAX_REFERENCED_DOIS) break;
+    }
+    return Array.from(refs);
+  }
+  async function checkCitedRetractedFromWorks(dois) {
+    const refDois = await collectReferencedDois(dois);
+    if (!refDois.length) {
+      return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+    }
+    logDebug("checking referenced works", { totalFound: refDois.length });
+    const results = [];
+    let checked = 0;
+    let failedChecks = 0;
+    let index = 0;
+    const worker = async () => {
+      while (index < refDois.length) {
+        const current = index++;
+        const refDoi = refDois[current];
+        const status = await checkStatus(refDoi);
+        checked += 1;
+        if (status.status === "unknown") {
+          failedChecks += 1;
+        } else if (ALERT_STATUSES.has(status.status)) {
+          results.push({
+            id: refDoi,
+            status: status.status,
+            noticeUrl: status.noticeUrl,
+            label: status.label
+          });
+        }
+        updateReferenceProgress(checked, refDois.length);
+      }
+    };
+    const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, refDois.length || 1);
+    const workers = Array.from({ length: concurrency }, () => worker());
+    await Promise.all(workers);
+    return { alerts: results, checked, totalFound: refDois.length, failedChecks };
+  }
   function extractDoiFromDoiOrg() {
     if (!location.hostname.endsWith("doi.org")) return null;
     const doi = decodeURIComponent(location.pathname.replace(/^\//, "")).trim();
@@ -367,7 +427,9 @@
   }
   function extractOrcidId() {
     if (!location.hostname.endsWith("orcid.org")) return null;
-    const match = location.pathname.match(/\/(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/i);
+    const match = location.pathname.match(
+      /\/(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/i
+    );
     return match ? match[1] : null;
   }
   function extractPmid() {
@@ -412,6 +474,16 @@
     const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
     const parsedPadding = Number.parseFloat(currentPaddingTop) || 0;
     document.body.style.paddingTop = `${parsedPadding + bannerHeight}px`;
+  }
+  function removeProgressBanner() {
+    const banner = document.getElementById("retraction-alert-ref-progress");
+    if (banner) {
+      const height = banner.getBoundingClientRect().height;
+      banner.remove();
+      const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
+      const parsedPadding = Number.parseFloat(currentPaddingTop) || 0;
+      document.body.style.paddingTop = `${Math.max(0, parsedPadding - height)}px`;
+    }
   }
   function injectReferencesBanner(alerts, checked, totalFound, failedChecks) {
     if (document.getElementById("retraction-alert-ref-banner")) return;
@@ -493,6 +565,7 @@
         banner.appendChild(button);
       }
     } else if (failedChecks > 0) {
+    } else if (failedChecks > 0) {
       const notifyButton = document.createElement("button");
       notifyButton.textContent = "Notify maintainer";
       notifyButton.style.border = "none";
@@ -508,6 +581,72 @@
       });
       banner.appendChild(notifyButton);
     }
+    document.body.appendChild(banner);
+    const bannerHeight = banner.getBoundingClientRect().height;
+    const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
+    const parsedPadding = Number.parseFloat(currentPaddingTop) || 0;
+    document.body.style.paddingTop = `${parsedPadding + bannerHeight}px`;
+  }
+  function injectOrcidBanner(works, citations, orcidId) {
+    if (document.getElementById("retraction-alert-ref-banner")) return;
+    const banner = document.createElement("div");
+    banner.id = "retraction-alert-ref-banner";
+    banner.style.position = "fixed";
+    banner.style.top = "0";
+    banner.style.left = "0";
+    banner.style.right = "0";
+    banner.style.zIndex = "999998";
+    banner.style.display = "flex";
+    banner.style.flexWrap = "wrap";
+    banner.style.justifyContent = "center";
+    banner.style.alignItems = "center";
+    banner.style.gap = "0.5rem";
+    banner.style.padding = "12px 16px";
+    const hasAlerts = works.alerts.length || citations.alerts.length;
+    banner.style.backgroundColor = hasAlerts ? "#8b0000" : "#1b5e20";
+    banner.style.color = "#ffffff";
+    banner.style.fontFamily = "Arial, sans-serif";
+    banner.style.fontSize = "14px";
+    banner.style.fontWeight = "bold";
+    banner.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
+    const lines = [];
+    lines.push(`ORCID ${orcidId}`);
+    lines.push(
+      `Works retracted: ${works.alerts.length} (checked ${works.checked}/${works.totalFound || works.checked}${works.failedChecks ? `, failed ${works.failedChecks}` : ""})`
+    );
+    lines.push(
+      `Cited retractions: ${citations.alerts.length} (checked ${citations.checked}/${citations.totalFound || citations.checked}${citations.failedChecks ? `, failed ${citations.failedChecks}` : ""})`
+    );
+    const text = document.createElement("div");
+    text.textContent = lines.join(" \u2022 ");
+    banner.appendChild(text);
+    const listSection = document.createElement("div");
+    listSection.style.display = "flex";
+    listSection.style.flexWrap = "wrap";
+    listSection.style.gap = "0.3rem";
+    const addLinks = (label, items) => {
+      if (!items.length) return;
+      const prefix = document.createElement("span");
+      prefix.textContent = label;
+      listSection.appendChild(prefix);
+      items.slice(0, 5).forEach((alert, idx) => {
+        const a = document.createElement("a");
+        a.href = alert.noticeUrl ?? `https://doi.org/${alert.id}`;
+        a.textContent = alert.id;
+        a.target = "_blank";
+        a.rel = "noreferrer noopener";
+        a.style.color = "#ffe082";
+        a.style.textDecoration = "underline";
+        listSection.appendChild(a);
+        if (idx < Math.min(5, items.length) - 1) {
+          const sep = document.createTextNode(", ");
+          listSection.appendChild(sep);
+        }
+      });
+    };
+    addLinks("Works:", works.alerts);
+    addLinks("Citations:", citations.alerts);
+    if (listSection.childNodes.length) banner.appendChild(listSection);
     document.body.appendChild(banner);
     const bannerHeight = banner.getBoundingClientRect().height;
     const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
@@ -628,13 +767,15 @@
     const orcidId = extractOrcidId();
     if (orcidId) {
       logDebug("Detected ORCID", orcidId);
-      const referenceResult = await checkOrcidWorks(orcidId);
-      injectReferencesBanner(
-        referenceResult.alerts,
-        referenceResult.checked,
-        referenceResult.totalFound,
-        referenceResult.failedChecks
-      );
+      const worksResult = await checkOrcidWorks(orcidId);
+      const allDois = await fetchOrcidDois(orcidId);
+      const citationsResult = await checkCitedRetractedFromWorks(allDois);
+      removeProgressBanner();
+      injectOrcidBanner(worksResult, citationsResult, orcidId);
+      logDebug("ORCID banner injected", {
+        works: worksResult,
+        citations: citationsResult
+      });
       return;
     }
     const id = extractDoiFromDoiOrg() ?? extractMetaDoi() ?? extractNatureDoiFromPath() ?? extractLancetDoiFromPath() ?? extractDoiFromUrlPath() ?? extractPmid();
@@ -652,6 +793,7 @@
     }
     if (id.startsWith("10.")) {
       const referenceResult = await checkReferences(id);
+      removeProgressBanner();
       injectReferencesBanner(
         referenceResult.alerts,
         referenceResult.checked,

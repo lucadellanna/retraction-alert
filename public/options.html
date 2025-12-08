@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Retraction Alert</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        margin: 14px;
+        color: #1f2937;
+        min-width: 280px;
+      }
+      h1 {
+        font-size: 17px;
+        margin: 0 0 4px 0;
+      }
+      .subtle {
+        color: #6b7280;
+        font-size: 12px;
+        margin-bottom: 12px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 8px 0;
+      }
+      button {
+        background: #8b0000;
+        color: #fff;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #f1f5f9;
+        color: #111827;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      #status {
+        margin-top: 8px;
+        font-size: 13px;
+      }
+      a {
+        color: #0b69a3;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Retraction Alert</h1>
+    <div class="subtle" id="version">Version</div>
+
+    <div class="row">
+      <button id="clear">Clear cache</button>
+      <button class="secondary" id="support">Support</button>
+      <button class="secondary" id="privacy">Privacy</button>
+    </div>
+    <div id="status">Cache status: not cleared yet.</div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

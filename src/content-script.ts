@@ -18,6 +18,7 @@ const ALERT_STATUSES: Set<ArticleStatus> = new Set([
 ]);
 
 const MAX_REFERENCE_CONCURRENCY = 4;
+const MAX_REFERENCED_DOIS = 10000;
 const SUPPORT_URL = "https://Luca-Dellanna.com/contact";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -87,7 +88,10 @@ async function getCachedStatus(doi: string): Promise<StatusResult | null> {
   return getCache<StatusResult>(`doi:${doi}`);
 }
 
-async function setCachedStatus(doi: string, status: StatusResult): Promise<void> {
+async function setCachedStatus(
+  doi: string,
+  status: StatusResult
+): Promise<void> {
   await setCache<StatusResult>(`doi:${doi}`, status);
 }
 
@@ -137,7 +141,9 @@ function detectAlertFromMessage(message: any): StatusResult {
       const noticeUrl =
         (item as { URL?: string }).URL ??
         (item as { url?: string }).url ??
-        (typeof updateDoi === "string" ? `https://doi.org/${updateDoi}` : undefined);
+        (typeof updateDoi === "string"
+          ? `https://doi.org/${updateDoi}`
+          : undefined);
       return {
         status: candidate.status,
         label: candidate.match,
@@ -154,7 +160,9 @@ function detectAlertFromMessage(message: any): StatusResult {
     const candidate = findAlertInTexts([type, label]);
     if (candidate) {
       const relId = (item as { id?: string }).id;
-      const relUrl = (item as { url?: string }).url ?? (typeof relId === "string" ? relId : undefined);
+      const relUrl =
+        (item as { url?: string }).url ??
+        (typeof relId === "string" ? relId : undefined);
       return {
         status: candidate.status,
         label: candidate.match,
@@ -175,7 +183,8 @@ async function fetchCrossrefMessage(doi: string): Promise<any | null> {
     doi
   )}&rows=1`;
 
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const sleep = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
 
   async function fetchWork(
     targetUrl: string
@@ -284,7 +293,8 @@ interface ReferenceCheckResult {
 
 async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
   const message = await fetchCrossrefMessage(doi);
-  if (!message) return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+  if (!message)
+    return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
 
   const references: unknown = message.reference ?? [];
   const refList = Array.isArray(references) ? references : [];
@@ -334,7 +344,10 @@ async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
     }
   };
 
-  const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, uniqueDois.length || 1);
+  const concurrency = Math.min(
+    MAX_REFERENCE_CONCURRENCY,
+    uniqueDois.length || 1
+  );
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
 
@@ -349,10 +362,13 @@ async function fetchOrcidDois(orcidId: string): Promise<string[]> {
   }
 
   try {
-    const res = await fetch(`https://pub.orcid.org/v3.0/${encodeURIComponent(orcidId)}/works`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const res = await fetch(
+      `https://pub.orcid.org/v3.0/${encodeURIComponent(orcidId)}/works`,
+      {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      }
+    );
     if (!res.ok) {
       logDebug("orcid fetch failed", res.status);
       return [];
@@ -365,7 +381,11 @@ async function fetchOrcidDois(orcidId: string): Promise<string[]> {
       for (const ext of extIds) {
         const type = ext?.["external-id-type"];
         const value = ext?.["external-id-value"];
-        if (typeof value === "string" && typeof type === "string" && type.toLowerCase() === "doi") {
+        if (
+          typeof value === "string" &&
+          typeof type === "string" &&
+          type.toLowerCase() === "doi"
+        ) {
           const norm = value.trim();
           if (norm.startsWith("10.")) dois.push(norm);
         }
@@ -390,7 +410,12 @@ async function checkOrcidWorks(orcidId: string): Promise<ReferenceCheckResult> {
 
   logDebug("checking orcid works", { totalFound: dois.length });
 
-  const results: Array<{ id: string; status: ArticleStatus; noticeUrl?: string; label?: string }> = [];
+  const results: Array<{
+    id: string;
+    status: ArticleStatus;
+    noticeUrl?: string;
+    label?: string;
+  }> = [];
   let checked = 0;
   let failedChecks = 0;
   let index = 0;
@@ -420,6 +445,72 @@ async function checkOrcidWorks(orcidId: string): Promise<ReferenceCheckResult> {
   await Promise.all(workers);
 
   return { alerts: results, checked, totalFound: dois.length, failedChecks };
+}
+
+async function collectReferencedDois(dois: string[]): Promise<string[]> {
+  const refs = new Set<string>();
+  for (const doi of dois) {
+    const message = await fetchCrossrefMessage(doi);
+    const references: unknown = message?.reference ?? [];
+    const refList = Array.isArray(references) ? references : [];
+    for (const ref of refList) {
+      if (!ref || typeof ref !== "object") continue;
+      const doiValue = (ref as { DOI?: string }).DOI;
+      if (typeof doiValue === "string" && doiValue.startsWith("10.")) {
+        refs.add(doiValue);
+        if (refs.size >= MAX_REFERENCED_DOIS) return Array.from(refs);
+      }
+    }
+    if (refs.size >= MAX_REFERENCED_DOIS) break;
+  }
+  return Array.from(refs);
+}
+
+async function checkCitedRetractedFromWorks(
+  dois: string[]
+): Promise<ReferenceCheckResult> {
+  const refDois = await collectReferencedDois(dois);
+  if (!refDois.length) {
+    return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+  }
+
+  logDebug("checking referenced works", { totalFound: refDois.length });
+
+  const results: Array<{
+    id: string;
+    status: ArticleStatus;
+    noticeUrl?: string;
+    label?: string;
+  }> = [];
+  let checked = 0;
+  let failedChecks = 0;
+  let index = 0;
+
+  const worker = async () => {
+    while (index < refDois.length) {
+      const current = index++;
+      const refDoi = refDois[current];
+      const status = await checkStatus(refDoi);
+      checked += 1;
+      if (status.status === "unknown") {
+        failedChecks += 1;
+      } else if (ALERT_STATUSES.has(status.status)) {
+        results.push({
+          id: refDoi,
+          status: status.status,
+          noticeUrl: status.noticeUrl,
+          label: status.label,
+        });
+      }
+      updateReferenceProgress(checked, refDois.length);
+    }
+  };
+
+  const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, refDois.length || 1);
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
+
+  return { alerts: results, checked, totalFound: refDois.length, failedChecks };
 }
 
 function extractDoiFromDoiOrg(): string | null {
@@ -465,7 +556,9 @@ function extractDoiFromUrlPath(): string | null {
 
 function extractOrcidId(): string | null {
   if (!location.hostname.endsWith("orcid.org")) return null;
-  const match = location.pathname.match(/\/(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/i);
+  const match = location.pathname.match(
+    /\/(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/i
+  );
   return match ? match[1] : null;
 }
 
@@ -518,6 +611,52 @@ function injectBanner(result: StatusResult): void {
   document.body.style.paddingTop = `${parsedPadding + bannerHeight}px`;
 }
 
+function injectCacheClearButton(container: HTMLElement): void {
+  const spacer = document.createElement("div");
+  spacer.style.flex = "1";
+  spacer.style.minWidth = "12px";
+
+  const btn = document.createElement("button");
+  btn.textContent = "Clear cache";
+  btn.style.border = "none";
+  btn.style.cursor = "pointer";
+  btn.style.background = "#ffe082";
+  btn.style.color = "#4e342e";
+  btn.style.fontWeight = "bold";
+  btn.style.padding = "6px 10px";
+  btn.style.borderRadius = "6px";
+  btn.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+  btn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    try {
+      if (chrome?.storage?.local) {
+        await chrome.storage.local.clear();
+      }
+      memoryCache.clear();
+      logDebug("cache cleared");
+      btn.textContent = "Cache cleared";
+      setTimeout(() => {
+        btn.textContent = "Clear cache";
+      }, 1500);
+    } catch (error) {
+      logDebug("cache clear error", error);
+    }
+  });
+  container.appendChild(spacer);
+  container.appendChild(btn);
+}
+
+function removeProgressBanner(): void {
+  const banner = document.getElementById("retraction-alert-ref-progress");
+  if (banner) {
+    const height = banner.getBoundingClientRect().height;
+    banner.remove();
+    const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
+    const parsedPadding = Number.parseFloat(currentPaddingTop) || 0;
+    document.body.style.paddingTop = `${Math.max(0, parsedPadding - height)}px`;
+  }
+}
+
 function injectReferencesBanner(
   alerts: Array<{ id: string; noticeUrl?: string }>,
   checked: number,
@@ -542,7 +681,11 @@ function injectReferencesBanner(
   banner.style.alignItems = "center";
   banner.style.gap = "0.4rem";
   banner.style.padding = "10px 14px";
-  banner.style.backgroundColor = alerts.length ? "#8b0000" : failedChecks > 0 ? "#fbc02d" : "#1b5e20";
+  banner.style.backgroundColor = alerts.length
+    ? "#8b0000"
+    : failedChecks > 0
+    ? "#fbc02d"
+    : "#1b5e20";
   banner.style.color = "#ffffff";
   banner.style.fontFamily = "Arial, sans-serif";
   banner.style.fontSize = "14px";
@@ -553,7 +696,9 @@ function injectReferencesBanner(
   if (alerts.length) {
     text.textContent = `⚠️ Cited retracted/flagged papers found (${alerts.length}).`;
   } else if (failedChecks > 0) {
-    text.textContent = `⚠️ Citation check incomplete (failed ${failedChecks} of ${totalFound || checked || failedChecks}).`;
+    text.textContent = `⚠️ Citation check incomplete (failed ${failedChecks} of ${
+      totalFound || checked || failedChecks
+    }).`;
   } else {
     text.textContent = `✅ Checked ${checked} of ${
       totalFound || checked
@@ -620,6 +765,7 @@ function injectReferencesBanner(
       banner.appendChild(button);
     }
   } else if (failedChecks > 0) {
+  } else if (failedChecks > 0) {
     const notifyButton = document.createElement("button");
     notifyButton.textContent = "Notify maintainer";
     notifyButton.style.border = "none";
@@ -635,6 +781,95 @@ function injectReferencesBanner(
     });
     banner.appendChild(notifyButton);
   }
+
+  document.body.appendChild(banner);
+
+  const bannerHeight = banner.getBoundingClientRect().height;
+  const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
+  const parsedPadding = Number.parseFloat(currentPaddingTop) || 0;
+  document.body.style.paddingTop = `${parsedPadding + bannerHeight}px`;
+}
+
+function injectOrcidBanner(
+  works: ReferenceCheckResult,
+  citations: ReferenceCheckResult,
+  orcidId: string
+): void {
+  if (document.getElementById("retraction-alert-ref-banner")) return;
+
+  const banner = document.createElement("div");
+  banner.id = "retraction-alert-ref-banner";
+  banner.style.position = "fixed";
+  banner.style.top = "0";
+  banner.style.left = "0";
+  banner.style.right = "0";
+  banner.style.zIndex = "999998";
+  banner.style.display = "flex";
+  banner.style.flexWrap = "wrap";
+  banner.style.justifyContent = "center";
+  banner.style.alignItems = "center";
+  banner.style.gap = "0.5rem";
+  banner.style.padding = "12px 16px";
+  const hasAlerts = works.alerts.length || citations.alerts.length;
+  banner.style.backgroundColor = hasAlerts ? "#8b0000" : "#1b5e20";
+  banner.style.color = "#ffffff";
+  banner.style.fontFamily = "Arial, sans-serif";
+  banner.style.fontSize = "14px";
+  banner.style.fontWeight = "bold";
+  banner.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
+
+  const lines: string[] = [];
+  lines.push(`ORCID ${orcidId}`);
+  lines.push(
+    `Works retracted: ${works.alerts.length} (checked ${works.checked}/${
+      works.totalFound || works.checked
+    }${works.failedChecks ? `, failed ${works.failedChecks}` : ""})`
+  );
+  lines.push(
+    `Cited retractions: ${citations.alerts.length} (checked ${
+      citations.checked
+    }/${citations.totalFound || citations.checked}${
+      citations.failedChecks ? `, failed ${citations.failedChecks}` : ""
+    })`
+  );
+
+  const text = document.createElement("div");
+  text.textContent = lines.join(" • ");
+  banner.appendChild(text);
+
+  const listSection = document.createElement("div");
+  listSection.style.display = "flex";
+  listSection.style.flexWrap = "wrap";
+  listSection.style.gap = "0.3rem";
+
+  const addLinks = (
+    label: string,
+    items: Array<{ id: string; noticeUrl?: string }>
+  ) => {
+    if (!items.length) return;
+    const prefix = document.createElement("span");
+    prefix.textContent = label;
+    listSection.appendChild(prefix);
+    items.slice(0, 5).forEach((alert, idx) => {
+      const a = document.createElement("a");
+      a.href = alert.noticeUrl ?? `https://doi.org/${alert.id}`;
+      a.textContent = alert.id;
+      a.target = "_blank";
+      a.rel = "noreferrer noopener";
+      a.style.color = "#ffe082";
+      a.style.textDecoration = "underline";
+      listSection.appendChild(a);
+      if (idx < Math.min(5, items.length) - 1) {
+        const sep = document.createTextNode(", ");
+        listSection.appendChild(sep);
+      }
+    });
+  };
+
+  addLinks("Works:", works.alerts);
+  addLinks("Citations:", citations.alerts);
+
+  if (listSection.childNodes.length) banner.appendChild(listSection);
 
   document.body.appendChild(banner);
 
@@ -778,13 +1013,15 @@ async function run(): Promise<void> {
   const orcidId = extractOrcidId();
   if (orcidId) {
     logDebug("Detected ORCID", orcidId);
-    const referenceResult = await checkOrcidWorks(orcidId);
-    injectReferencesBanner(
-      referenceResult.alerts,
-      referenceResult.checked,
-      referenceResult.totalFound,
-      referenceResult.failedChecks
-    );
+    const worksResult = await checkOrcidWorks(orcidId);
+    const allDois = await fetchOrcidDois(orcidId);
+    const citationsResult = await checkCitedRetractedFromWorks(allDois);
+    removeProgressBanner();
+    injectOrcidBanner(worksResult, citationsResult, orcidId);
+    logDebug("ORCID banner injected", {
+      works: worksResult,
+      citations: citationsResult,
+    });
     return;
   }
 
@@ -812,6 +1049,7 @@ async function run(): Promise<void> {
 
   if (id.startsWith("10.")) {
     const referenceResult = await checkReferences(id);
+    removeProgressBanner();
     injectReferencesBanner(
       referenceResult.alerts,
       referenceResult.checked,
