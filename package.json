@@ -1,9 +1,11 @@
 {
   "name": "retraction-alert",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "version": "node scripts/sync-version.mjs",
+    "bump": "node scripts/bump.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.32",

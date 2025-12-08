@@ -45,3 +45,7 @@ Warns you when the current article—or any of its cited papers—has been retra
 - Add more domains by updating `public/manifest.json` and, if needed, a small URL parser in `src/content-script.ts` (prefer meta `citation_doi` when available).
 - Swap out `checkStatus`/Crossref with your backend/API when ready.
 - Improve email extraction with more robust selectors if target sites differ.
+
+## Privacy & support
+- Privacy: The extension reads the current page to extract DOIs/PMIDs and fetches status data from Crossref. No data is stored or sent elsewhere.
+- Support/contact: https://Luca-Dellanna.com/contact
