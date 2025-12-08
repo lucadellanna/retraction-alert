@@ -42,4 +42,4 @@ Alerts when the current article—or any of its cited papers—is retracted/with
 
 **Privacy policy URL**  
 Point to `privacy.md` in this repo (e.g., raw GitHub URL after publishing):  
-`https://raw.githubusercontent.com/lucadellanna/retraction-alert/main/privacy.md`
+`https://github.com/lucadellanna/retraction-alert/blob/main/privacy.md`
