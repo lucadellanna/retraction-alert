@@ -25,4 +25,5 @@ function run(cmd, args) {
     process.exit(1);
   }
   await run('npm', ['version', answer]);
+  await run('npm', ['run', 'build']);
 })();
