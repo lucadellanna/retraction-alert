@@ -9,6 +9,19 @@
   var MAX_REFERENCE_CONCURRENCY = 4;
   var MAX_REFERENCED_DOIS = 1e4;
   var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+  var NEWS_CONTACTS = {
+    "wsj.com": "wsjcontact@wsj.com",
+    "theguardian.com": "reader@theguardian.com",
+    "nytimes.com": "letters@nytimes.com",
+    "washingtonpost.com": "letters@washpost.com",
+    "economist.com": "letters@economist.com",
+    "ft.com": "customer.support@ft.com",
+    "bbc.com": "haveyoursay@bbc.co.uk",
+    "reuters.com": "editor@reuters.com",
+    "latimes.com": "readers.rep@latimes.com",
+    "nbcnews.com": "tips@nbcuni.com",
+    "cnn.com": "cnntips@cnn.com"
+  };
   function logDebug(...args) {
     console.debug("[RetractionAlert]", ...args);
   }
@@ -232,7 +245,13 @@
         checked: 0,
         totalFound: 0,
         failedChecks: 1,
-        counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 }
+        counts: {
+          ok: 0,
+          retracted: 0,
+          withdrawn: 0,
+          expression_of_concern: 0,
+          unknown: 1
+        }
       };
     const references = message.reference ?? [];
     const refList = Array.isArray(references) ? references : [];
@@ -347,7 +366,13 @@
         checked: 0,
         totalFound: 0,
         failedChecks: 1,
-        counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 }
+        counts: {
+          ok: 0,
+          retracted: 0,
+          withdrawn: 0,
+          expression_of_concern: 0,
+          unknown: 1
+        }
       };
     }
     logDebug("checking orcid works", { totalFound: dois.length });
@@ -389,7 +414,13 @@
     const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, dois.length || 1);
     const workers = Array.from({ length: concurrency }, () => worker());
     await Promise.all(workers);
-    return { alerts: results, checked, totalFound: dois.length, failedChecks, counts };
+    return {
+      alerts: results,
+      checked,
+      totalFound: dois.length,
+      failedChecks,
+      counts
+    };
   }
   async function collectReferencedDois(dois) {
     const refs = /* @__PURE__ */ new Set();
@@ -417,7 +448,13 @@
         checked: 0,
         totalFound: 0,
         failedChecks: 1,
-        counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 }
+        counts: {
+          ok: 0,
+          retracted: 0,
+          withdrawn: 0,
+          expression_of_concern: 0,
+          unknown: 1
+        }
       };
     }
     logDebug("checking referenced works", { totalFound: refDois.length });
@@ -458,7 +495,13 @@
     const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, refDois.length || 1);
     const workers = Array.from({ length: concurrency }, () => worker());
     await Promise.all(workers);
-    return { alerts: results, checked, totalFound: refDois.length, failedChecks, counts };
+    return {
+      alerts: results,
+      checked,
+      totalFound: refDois.length,
+      failedChecks,
+      counts
+    };
   }
   function extractDoiFromDoiOrg() {
     if (!location.hostname.endsWith("doi.org")) return null;
@@ -755,7 +798,14 @@
       const citationsResult = await checkCitedRetractedFromWorks(allDois);
       updateBanner(article, {
         bg: worksResult.alerts.length ? "#8b0000" : worksResult.failedChecks ? "#fbc02d" : "#1b5e20",
-        lines: [countsSummary("Works", worksResult.counts, worksResult.totalFound || worksResult.checked, worksResult.failedChecks)],
+        lines: [
+          countsSummary(
+            "Works",
+            worksResult.counts,
+            worksResult.totalFound || worksResult.checked,
+            worksResult.failedChecks
+          )
+        ],
         alerts: worksResult.alerts
       });
       updateBanner(citations, {
@@ -770,13 +820,21 @@
         ],
         alerts: citationsResult.alerts
       });
-      logDebug("ORCID banner updated", { works: worksResult, citations: citationsResult });
+      logDebug("ORCID banner updated", {
+        works: worksResult,
+        citations: citationsResult
+      });
       return;
     }
     if (isNews) {
       updateBanner(article, { bg: "#1b5e20", lines: ["News page detected."] });
-      updateBanner(citations, { bg: "#fbc02d", lines: ["Checking linked articles..."] });
-      const anchors = Array.from(document.querySelectorAll("a[href]"));
+      updateBanner(citations, {
+        bg: "#fbc02d",
+        lines: ["Checking linked articles..."]
+      });
+      const anchors = Array.from(
+        document.querySelectorAll("a[href]")
+      );
       const targetHosts = [
         "doi.org",
         "nature.com",
@@ -819,7 +877,10 @@
         }
       });
       if (candidateDois.size === 0) {
-        updateBanner(citations, { bg: "#1b5e20", lines: ["No scientific links found on this page."] });
+        updateBanner(citations, {
+          bg: "#1b5e20",
+          lines: ["No scientific links found on this page."]
+        });
         return;
       }
       const results = [];
@@ -841,21 +902,70 @@
         ok: candidateDois.size - results.length - unknown,
         retracted: results.filter((r) => r.status === "retracted").length,
         withdrawn: results.filter((r) => r.status === "withdrawn").length,
-        expression_of_concern: results.filter((r) => r.status === "expression_of_concern").length,
+        expression_of_concern: results.filter(
+          (r) => r.status === "expression_of_concern"
+        ).length,
         unknown
       };
+      const newsDomain = newsHosts.find((h) => location.hostname.includes(h)) || location.hostname;
+      const recipient = Object.entries(NEWS_CONTACTS).find(([host]) => newsDomain.includes(host))?.[1] ?? "";
+      const subject = `Retracted/flagged study linked on ${newsDomain}`;
+      const bodyLines = [
+        `Hi,`,
+        ``,
+        `On ${newsDomain} page: ${location.href}`,
+        `These linked studies appear retracted/flagged:`,
+        ...results.map((r) => `- ${r.title || r.id} (${r.status}): https://doi.org/${r.id}`),
+        ``,
+        `Sent via Retraction Alert`
+      ];
+      const body = bodyLines.join("\n");
+      const mailto = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(
+        subject
+      )}&body=${encodeURIComponent(body)}`;
       updateBanner(citations, {
         bg: results.length ? "#8b0000" : unknown ? "#fbc02d" : "#1b5e20",
-        lines: [countsSummary("Linked articles", counts, candidateDois.size, unknown)],
+        lines: [
+          countsSummary("Linked articles", counts, candidateDois.size, unknown)
+        ],
         alerts: results
       });
+      if (mailto) {
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.justifyContent = "center";
+        actions.style.width = "100%";
+        actions.style.marginTop = "6px";
+        const button = document.createElement("button");
+        button.textContent = "Email editor";
+        button.style.border = "none";
+        button.style.cursor = "pointer";
+        button.style.background = "#ffe082";
+        button.style.color = "#4e342e";
+        button.style.fontWeight = "bold";
+        button.style.padding = "6px 10px";
+        button.style.borderRadius = "6px";
+        button.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+        button.addEventListener("click", (e) => {
+          e.preventDefault();
+          window.location.href = mailto;
+        });
+        actions.appendChild(button);
+        citations.appendChild(actions);
+      }
       return;
     }
     const id = extractDoiFromDoiOrg() ?? extractMetaDoi() ?? extractNatureDoiFromPath() ?? extractLancetDoiFromPath() ?? extractDoiFromUrlPath() ?? extractPmid();
     if (!id) {
       logDebug("No DOI/PMID found on this page");
-      updateBanner(article, { bg: "#1b5e20", lines: ["No identifier found on this page."] });
-      updateBanner(citations, { bg: "#1b5e20", lines: ["No citations checked."] });
+      updateBanner(article, {
+        bg: "#1b5e20",
+        lines: ["No identifier found on this page."]
+      });
+      updateBanner(citations, {
+        bg: "#1b5e20",
+        lines: ["No citations checked."]
+      });
       return;
     }
     logDebug("Detected identifier", id, "hostname:", location.hostname);
