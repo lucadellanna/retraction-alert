@@ -18,3 +18,6 @@ Retraction Alert reads the current page to extract DOIs/PMIDs and fetches status
 
 **Support**  
 https://Luca-Dellanna.com/contact
+
+**Disclaimer**  
+Best-effort indicator based on Crossref data; verify status with the publisher/journal. Not legal/medical advice.

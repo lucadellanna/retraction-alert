@@ -40,6 +40,7 @@ Warns you when the current article—or any of its cited papers—has been retra
 - Reference checks de-duplicate DOIs; runs on all found references (may take time on very long bibliographies).
 - For PMIDs, only the current page is checked (references still rely on DOIs).
 - Permissions are minimal: content script matches + `https://api.crossref.org/*` for lookup.
+- Best-effort indicator only: Based on Crossref data; verify status with the publisher/journal. Not legal/medical advice.
 
 ## Extending
 - Add more domains by updating `public/manifest.json` and, if needed, a small URL parser in `src/content-script.ts` (prefer meta `citation_doi` when available).
