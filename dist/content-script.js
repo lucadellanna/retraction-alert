@@ -179,6 +179,13 @@
     const doiStem = pii.startsWith("S") ? pii : pii.replace(/^P?II/, "");
     return `10.1016/${doiStem}`;
   }
+  function extractDoiFromUrlPath() {
+    const decoded = decodeURIComponent(location.href);
+    const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
+    if (!match) return null;
+    const candidate = match[0].replace(/[\].]+$/, "");
+    return candidate;
+  }
   function extractPmid() {
     if (!location.hostname.endsWith("pubmed.ncbi.nlm.nih.gov")) return null;
     const meta = document.querySelector('meta[name="citation_pmid"]');
@@ -404,7 +411,7 @@
     }
   }
   async function run() {
-    const id = extractDoiFromDoiOrg() ?? extractMetaDoi() ?? extractNatureDoiFromPath() ?? extractLancetDoiFromPath() ?? extractPmid();
+    const id = extractDoiFromDoiOrg() ?? extractMetaDoi() ?? extractNatureDoiFromPath() ?? extractLancetDoiFromPath() ?? extractDoiFromUrlPath() ?? extractPmid();
     if (!id) {
       logDebug("No DOI/PMID found on this page");
       return;

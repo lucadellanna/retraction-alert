@@ -233,6 +233,15 @@ function extractLancetDoiFromPath(): string | null {
   return `10.1016/${doiStem}`;
 }
 
+function extractDoiFromUrlPath(): string | null {
+  // Generic DOI finder in URL for many publishers (science.org, sciencedirect, springer, wiley, tandfonline, etc.)
+  const decoded = decodeURIComponent(location.href);
+  const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
+  if (!match) return null;
+  const candidate = match[0].replace(/[\].]+$/, ""); // trim trailing punctuation
+  return candidate;
+}
+
 function extractPmid(): string | null {
   if (!location.hostname.endsWith("pubmed.ncbi.nlm.nih.gov")) return null;
   const meta = document.querySelector('meta[name="citation_pmid"]');
@@ -497,6 +506,7 @@ async function run(): Promise<void> {
     extractMetaDoi() ??
     extractNatureDoiFromPath() ??
     extractLancetDoiFromPath() ??
+    extractDoiFromUrlPath() ??
     extractPmid();
   if (!id) {
     logDebug("No DOI/PMID found on this page");
