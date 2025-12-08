@@ -628,6 +628,30 @@ function extractDoiFromUrlPath(): string | null {
   return candidate;
 }
 
+function extractDoiFromHref(href: string): string | null {
+  try {
+    const decoded = decodeURIComponent(href);
+    const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
+    if (!match) return null;
+    return match[0].replace(/[\].]+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function mapPublisherUrlToDoi(href: string): string | null {
+  try {
+    const url = new URL(href);
+    if (url.hostname.includes("nature.com")) {
+      const m = url.pathname.match(/\/articles\/([^/?#]+)/);
+      if (m && m[1]) return `10.1038/${m[1]}`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function extractOrcidId(): string | null {
   if (!location.hostname.endsWith("orcid.org")) return null;
   const match = location.pathname.match(
@@ -1197,6 +1221,20 @@ function updateReferenceProgress(done: number, total: number): void {
 
 async function run(): Promise<void> {
   const { article, citations } = ensureBanners();
+  const newsHosts = [
+    "wsj.com",
+    "theguardian.com",
+    "nytimes.com",
+    "washingtonpost.com",
+    "economist.com",
+    "ft.com",
+    "bbc.com",
+    "reuters.com",
+    "latimes.com",
+    "nbcnews.com",
+    "cnn.com",
+  ];
+  const isNews = newsHosts.some((h) => location.hostname.includes(h));
   const orcidId = extractOrcidId();
   if (orcidId) {
     logDebug("Detected ORCID", orcidId);
@@ -1233,6 +1271,92 @@ async function run(): Promise<void> {
       alerts: citationsResult.alerts,
     });
     logDebug("ORCID banner updated", { works: worksResult, citations: citationsResult });
+    return;
+  }
+
+  if (isNews) {
+    updateBanner(article, { bg: "#1b5e20", lines: ["News page detected."] });
+    updateBanner(citations, { bg: "#fbc02d", lines: ["Checking linked articles..."] });
+
+    const anchors = Array.from(document.querySelectorAll("a[href]")) as HTMLAnchorElement[];
+    const targetHosts = [
+      "doi.org",
+      "nature.com",
+      "thelancet.com",
+      "science.org",
+      "sciencedirect.com",
+      "link.springer.com",
+      "onlinelibrary.wiley.com",
+      "tandfonline.com",
+      "jamanetwork.com",
+      "nejm.org",
+      "bmj.com",
+      "journals.plos.org",
+      "pubs.acs.org",
+      "ieeexplore.ieee.org",
+      "dl.acm.org",
+      "arxiv.org",
+      "biorxiv.org",
+      "medrxiv.org",
+      "academic.oup.com",
+      "psycnet.apa.org",
+      "cambridge.org",
+    ];
+
+    const candidateDois = new Set<string>();
+    anchors.forEach((a) => {
+      try {
+        const url = new URL(a.href, location.href);
+        if (targetHosts.some((h) => url.hostname.includes(h))) {
+          let doi = extractDoiFromHref(url.href) || mapPublisherUrlToDoi(url.href);
+          if (!doi) {
+            const redirect = url.searchParams.get("redirect_uri");
+            if (redirect) {
+              const decoded = decodeURIComponent(redirect);
+              doi = extractDoiFromHref(decoded) || mapPublisherUrlToDoi(decoded);
+            }
+          }
+          if (doi) candidateDois.add(doi);
+        }
+      } catch {
+        // ignore malformed
+      }
+    });
+
+    if (candidateDois.size === 0) {
+      updateBanner(citations, { bg: "#1b5e20", lines: ["No scientific links found on this page."] });
+      return;
+    }
+
+    const results: AlertItem[] = [];
+    let unknown = 0;
+    for (const doi of candidateDois) {
+      const status = await checkStatus(doi);
+      if (status.status === "unknown") {
+        unknown += 1;
+      } else if (ALERT_STATUSES.has(status.status)) {
+        results.push({
+          id: doi,
+          status: status.status,
+          noticeUrl: status.noticeUrl,
+          title: status.title,
+        });
+      }
+    }
+
+    const counts: Record<ArticleStatus, number> = {
+      ok: candidateDois.size - results.length - unknown,
+      retracted: results.filter((r) => r.status === "retracted").length,
+      withdrawn: results.filter((r) => r.status === "withdrawn").length,
+      expression_of_concern: results.filter((r) => r.status === "expression_of_concern").length,
+      unknown,
+    };
+
+    updateBanner(citations, {
+      bg: results.length ? "#8b0000" : unknown ? "#fbc02d" : "#1b5e20",
+      lines: [countsSummary("Linked articles", counts, candidateDois.size, unknown)],
+      alerts: results,
+    });
     return;
   }
 

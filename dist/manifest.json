@@ -32,7 +32,18 @@
         "https://academic.oup.com/*",
         "https://psycnet.apa.org/*",
         "https://www.cambridge.org/*",
-        "https://orcid.org/*"
+        "https://orcid.org/*",
+        "https://www.wsj.com/*",
+        "https://www.theguardian.com/*",
+        "https://www.nytimes.com/*",
+        "https://www.washingtonpost.com/*",
+        "https://www.economist.com/*",
+        "https://www.ft.com/*",
+        "https://www.bbc.com/*",
+        "https://www.reuters.com/*",
+        "https://www.latimes.com/*",
+        "https://www.nbcnews.com/*",
+        "https://www.cnn.com/*"
       ],
       "js": [
         "content-script.js"
