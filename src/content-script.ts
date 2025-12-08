@@ -316,6 +316,8 @@ function injectReferencesBanner(alerts: Array<{ id: string; noticeUrl?: string }
   }
   banner.appendChild(text);
 
+  const emailTarget = alerts.length ? extractCorrespondingEmail() : null;
+
   if (alerts.length) {
     const list = document.createElement("span");
     const links = alerts.slice(0, 5).map((alert) => {
@@ -338,6 +340,36 @@ function injectReferencesBanner(alerts: Array<{ id: string; noticeUrl?: string }
     });
 
     banner.appendChild(list);
+
+    if (emailTarget) {
+      const spacer = document.createElement("span");
+      spacer.textContent = " · ";
+      spacer.style.opacity = "0.6";
+      banner.appendChild(spacer);
+
+      const button = document.createElement("button");
+      button.textContent = "Email corresponding author";
+      button.style.border = "none";
+      button.style.cursor = "pointer";
+      button.style.background = "#ffe082";
+      button.style.color = "#4e342e";
+      button.style.fontWeight = "bold";
+      button.style.padding = "6px 10px";
+      button.style.borderRadius = "6px";
+      button.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+
+      button.addEventListener("click", (e) => {
+        e.preventDefault();
+        const mailto = createEmailLink(
+          (extractDoiFromDoiOrg() ?? extractMetaDoi() ?? extractNatureDoiFromPath() ?? extractLancetDoiFromPath() ?? "this article"),
+          emailTarget,
+          alerts
+        );
+        window.location.href = mailto;
+      });
+
+      banner.appendChild(button);
+    }
   }
 
   document.body.appendChild(banner);
@@ -346,6 +378,34 @@ function injectReferencesBanner(alerts: Array<{ id: string; noticeUrl?: string }
   const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
   const parsedPadding = Number.parseFloat(currentPaddingTop) || 0;
   document.body.style.paddingTop = `${parsedPadding + bannerHeight}px`;
+}
+
+function extractCorrespondingEmail(): string | null {
+  const metaEmail = document.querySelector('meta[name="citation_author_email"]')?.getAttribute("content");
+  if (metaEmail) return metaEmail.trim();
+  const mailLink = document.querySelector('a[href^="mailto:"]') as HTMLAnchorElement | null;
+  const href = mailLink?.getAttribute("href");
+  if (href && href.startsWith("mailto:")) {
+    const email = href.replace(/^mailto:/i, "").split("?")[0];
+    if (email) return email.trim();
+  }
+  return null;
+}
+
+function createEmailLink(articleId: string, recipient: string, alerts: Array<{ id: string }>): string {
+  const subject = `Retracted citations noted for ${articleId}`;
+  const bodyLines = [
+    `Hello,`,
+    ``,
+    `While reviewing ${articleId}, I noticed the following cited papers are marked as retracted/flagged:`,
+    ...alerts.map((a) => `- ${a.id}`),
+    ``,
+    `Thought you might want to know.`,
+    ``,
+    `Sent via Retraction Alert`
+  ];
+  const body = bodyLines.join("\n");
+  return `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function ensureReferenceProgressBanner(): HTMLDivElement {
