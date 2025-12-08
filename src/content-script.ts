@@ -50,6 +50,12 @@ function findAlertInTexts(
 
 type CacheEntry<T> = { value: T; ts: number };
 const memoryCache = new Map<string, CacheEntry<unknown>>();
+const STATE = {
+  basePadding: 0,
+  wrapper: null as HTMLDivElement | null,
+  articleBanner: null as HTMLDivElement | null,
+  citationsBanner: null as HTMLDivElement | null,
+};
 
 function isFresh(entry: CacheEntry<unknown> | undefined): boolean {
   if (!entry) return false;
@@ -731,6 +737,88 @@ function removeProgressBanner(): void {
   }
 }
 
+function ensureBanners(): {
+  wrapper: HTMLDivElement;
+  article: HTMLDivElement;
+  citations: HTMLDivElement;
+} {
+  if (STATE.wrapper && STATE.articleBanner && STATE.citationsBanner) {
+    return {
+      wrapper: STATE.wrapper,
+      article: STATE.articleBanner,
+      citations: STATE.citationsBanner,
+    };
+  }
+
+  if (!STATE.basePadding) {
+    STATE.basePadding =
+      Number.parseFloat(window.getComputedStyle(document.body).paddingTop) || 0;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.id = "retraction-alert-wrapper";
+  wrapper.style.position = "fixed";
+  wrapper.style.top = "0";
+  wrapper.style.left = "0";
+  wrapper.style.right = "0";
+  wrapper.style.zIndex = "999998";
+  wrapper.style.display = "flex";
+  wrapper.style.flexDirection = "column";
+  wrapper.style.gap = "4px";
+
+  const makeBanner = (): HTMLDivElement => {
+    const div = document.createElement("div");
+    div.style.minHeight = "44px";
+    div.style.display = "flex";
+    div.style.flexDirection = "column";
+    div.style.gap = "4px";
+    div.style.alignItems = "center";
+    div.style.padding = "10px 14px";
+    div.style.fontFamily = "Arial, sans-serif";
+    div.style.fontSize = "14px";
+    div.style.fontWeight = "bold";
+    div.style.color = "#ffffff";
+    div.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
+    div.style.borderRadius = "0";
+    return div;
+  };
+
+  const article = makeBanner();
+  const citations = makeBanner();
+  wrapper.appendChild(article);
+  wrapper.appendChild(citations);
+  document.body.appendChild(wrapper);
+
+  STATE.wrapper = wrapper;
+  STATE.articleBanner = article;
+  STATE.citationsBanner = citations;
+
+  const updatePadding = () => {
+    const height = wrapper.getBoundingClientRect().height;
+    document.body.style.paddingTop = `${STATE.basePadding + height}px`;
+  };
+  updatePadding();
+
+  return { wrapper, article, citations };
+}
+
+function updateBanner(
+  banner: HTMLDivElement,
+  options: { bg: string; lines: string[]; alerts?: AlertItem[] }
+): void {
+  banner.style.backgroundColor = options.bg;
+  banner.innerHTML = "";
+  options.lines.forEach((line) => {
+    const div = document.createElement("div");
+    div.textContent = line;
+    div.style.textAlign = "center";
+    banner.appendChild(div);
+  });
+  if (options.alerts && options.alerts.length) {
+    banner.appendChild(buildAlertList(options.alerts));
+  }
+}
+
 function statusLabel(status: ArticleStatus): string {
   switch (status) {
     case "retracted":
@@ -1108,18 +1196,43 @@ function updateReferenceProgress(done: number, total: number): void {
 }
 
 async function run(): Promise<void> {
+  const { article, citations } = ensureBanners();
   const orcidId = extractOrcidId();
   if (orcidId) {
     logDebug("Detected ORCID", orcidId);
+    updateBanner(article, {
+      bg: "#fbc02d",
+      lines: ["Checking ORCID works..."],
+    });
+    updateBanner(citations, {
+      bg: "#fbc02d",
+      lines: ["Checking cited works..."],
+    });
     const worksResult = await checkOrcidWorks(orcidId);
     const allDois = await fetchOrcidDois(orcidId);
     const citationsResult = await checkCitedRetractedFromWorks(allDois);
-    removeProgressBanner();
-    injectOrcidBanner(worksResult, citationsResult, orcidId);
-    logDebug("ORCID banner injected", {
-      works: worksResult,
-      citations: citationsResult,
+    updateBanner(article, {
+      bg: worksResult.alerts.length ? "#8b0000" : worksResult.failedChecks ? "#fbc02d" : "#1b5e20",
+      lines: [countsSummary("Works", worksResult.counts, worksResult.totalFound || worksResult.checked, worksResult.failedChecks)],
+      alerts: worksResult.alerts,
     });
+    updateBanner(citations, {
+      bg: citationsResult.alerts.length
+        ? "#8b0000"
+        : citationsResult.failedChecks
+        ? "#fbc02d"
+        : "#1b5e20",
+      lines: [
+        countsSummary(
+          "Citations",
+          citationsResult.counts,
+          citationsResult.totalFound || citationsResult.checked,
+          citationsResult.failedChecks
+        ),
+      ],
+      alerts: citationsResult.alerts,
+    });
+    logDebug("ORCID banner updated", { works: worksResult, citations: citationsResult });
     return;
   }
 
@@ -1132,34 +1245,59 @@ async function run(): Promise<void> {
     extractPmid();
   if (!id) {
     logDebug("No DOI/PMID found on this page");
+    updateBanner(article, { bg: "#1b5e20", lines: ["No identifier found on this page."] });
+    updateBanner(citations, { bg: "#1b5e20", lines: ["No citations checked."] });
     return;
   }
 
   logDebug("Detected identifier", id, "hostname:", location.hostname);
+  updateBanner(article, {
+    bg: "#fbc02d",
+    lines: ["Checking article status..."],
+  });
+  updateBanner(citations, {
+    bg: "#fbc02d",
+    lines: ["Checking citations..."],
+  });
 
   const result = await checkStatus(id);
-  if (ALERT_STATUSES.has(result.status)) {
-    injectBanner(result);
-    logDebug("Banner injected");
-  } else {
-    logDebug("Status not alerting", result);
-  }
+  const articleBg = ALERT_STATUSES.has(result.status)
+    ? "#8b0000"
+    : result.status === "unknown"
+    ? "#fbc02d"
+    : "#1b5e20";
+  const articleLine =
+    result.status === "retracted"
+      ? "⚠️ This article has been retracted."
+      : result.status === "withdrawn"
+      ? "⚠️ This article has been withdrawn."
+      : result.status === "expression_of_concern"
+      ? "⚠️ This article has an expression of concern."
+      : result.status === "unknown"
+      ? "Article status unknown."
+      : "✅ Article OK.";
+  updateBanner(article, { bg: articleBg, lines: [articleLine] });
+  logDebug("Article banner updated", result);
 
   if (id.startsWith("10.")) {
     const referenceResult = await checkReferences(id);
-    removeProgressBanner();
-    injectReferencesBanner(
-      referenceResult.alerts,
-      referenceResult.checked,
-      referenceResult.totalFound,
-      referenceResult.failedChecks,
-      referenceResult.counts
-    );
-    if (referenceResult.alerts.length) {
-      logDebug("Reference banner injected", referenceResult.alerts);
-    } else {
-      logDebug("No reference alerts", referenceResult);
-    }
+    updateBanner(citations, {
+      bg: referenceResult.alerts.length
+        ? "#8b0000"
+        : referenceResult.failedChecks
+        ? "#fbc02d"
+        : "#1b5e20",
+      lines: [
+        countsSummary(
+          "Citations",
+          referenceResult.counts,
+          referenceResult.totalFound || referenceResult.checked,
+          referenceResult.failedChecks
+        ),
+      ],
+      alerts: referenceResult.alerts,
+    });
+    logDebug("Reference banner updated", referenceResult);
   }
 }
 
