@@ -1423,6 +1423,8 @@ async function run(): Promise<void> {
     recalcPadding();
 
     const results: AlertItem[] = [];
+    const referenceAlerts: AlertItem[] = [];
+    let referenceFailedChecks = 0;
     let unknown = 0;
     for (const doi of candidateDois) {
       const status = await checkStatus(doi);
@@ -1436,6 +1438,19 @@ async function run(): Promise<void> {
           title: status.title,
         });
       }
+
+      const referenceResult = await checkReferences(doi);
+      referenceFailedChecks += referenceResult.failedChecks;
+      if (referenceResult.alerts.length) {
+        referenceAlerts.push(
+          ...referenceResult.alerts.map((alert) => ({
+            ...alert,
+            title: alert.title
+              ? `${alert.title} (cited by ${doi})`
+              : `${alert.id} (cited by ${doi})`,
+          }))
+        );
+      }
     }
 
     const counts: Record<ArticleStatus, number> = {
@@ -1448,8 +1463,9 @@ async function run(): Promise<void> {
       unknown,
     };
 
+    const allAlerts = [...results, ...referenceAlerts];
     let mailto: string | null = null;
-    if (results.length) {
+    if (allAlerts.length) {
       const newsDomain =
         newsHosts.find((h) => location.hostname.includes(h)) || location.hostname;
       const recipient =
@@ -1460,7 +1476,7 @@ async function run(): Promise<void> {
         ``,
         `On ${newsDomain} page: ${location.href}`,
         `These linked studies appear retracted/flagged:`,
-        ...results.map((r) => `- ${r.title || r.id} (${r.status}): https://doi.org/${r.id}`),
+        ...allAlerts.map((r) => `- ${r.title || r.id} (${r.status}): https://doi.org/${r.id}`),
         ``,
         `Sent via Retraction Alert`,
       ];
@@ -1471,11 +1487,25 @@ async function run(): Promise<void> {
     }
 
     updateBanner(citations, {
-      bg: results.length ? "#8b0000" : unknown ? "#fbc02d" : "#1b5e20",
+      bg: allAlerts.length
+        ? "#8b0000"
+        : unknown || referenceFailedChecks
+        ? "#fbc02d"
+        : "#1b5e20",
       lines: [
-        countsSummary("Linked articles", counts, candidateDois.size, unknown),
+        countsSummary(
+          "Linked articles",
+          counts,
+          candidateDois.size,
+          unknown + referenceFailedChecks
+        ),
+        ...(
+          referenceAlerts.length
+            ? [`Flagged references found in linked papers: ${referenceAlerts.length}`]
+            : []
+        ),
       ],
-      alerts: results,
+      alerts: allAlerts,
     });
 
     if (mailto) {
