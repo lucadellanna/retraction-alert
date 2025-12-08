@@ -989,7 +989,7 @@
     });
     const result = await checkStatus(id);
     const articleBg = ALERT_STATUSES.has(result.status) ? "#8b0000" : result.status === "unknown" ? "#fbc02d" : "#1b5e20";
-    const articleLine = result.status === "retracted" ? "\u26A0\uFE0F This article has been retracted." : result.status === "withdrawn" ? "\u26A0\uFE0F This article has been withdrawn." : result.status === "expression_of_concern" ? "\u26A0\uFE0F This article has an expression of concern." : result.status === "unknown" ? "Article status unknown." : "\u2705 Article OK.";
+    const articleLine = result.status === "retracted" ? "\u26A0\uFE0F This article has been retracted." : result.status === "withdrawn" ? "\u26A0\uFE0F This article has been withdrawn." : result.status === "expression_of_concern" ? "\u26A0\uFE0F This article has an expression of concern." : result.status === "unknown" ? "Article status unknown." : "\u{1F7E1} Article OK; citations pending.";
     updateBanner(article, { bg: articleBg, lines: [articleLine] });
     logDebug("Article banner updated", result);
     if (id.startsWith("10.")) {
@@ -1007,6 +1007,19 @@
         alerts: referenceResult.alerts
       });
       logDebug("Reference banner updated", referenceResult);
+      const articleOkNoAlerts = result.status === "ok" && referenceResult.alerts.length === 0 && referenceResult.failedChecks === 0;
+      const articleHasCitationAlerts = referenceResult.alerts.length > 0 || referenceResult.failedChecks > 0;
+      if (articleOkNoAlerts) {
+        updateBanner(article, {
+          bg: "#1b5e20",
+          lines: ["\u2705 Article OK and citations clear."]
+        });
+      } else if (result.status === "ok" && articleHasCitationAlerts) {
+        updateBanner(article, {
+          bg: "#8b0000",
+          lines: ["\u26A0\uFE0F Article cites retracted/flagged or incomplete citations check."]
+        });
+      }
     }
   }
   if (document.readyState === "loading") {

@@ -1546,7 +1546,7 @@ async function run(): Promise<void> {
       ? "⚠️ This article has an expression of concern."
       : result.status === "unknown"
       ? "Article status unknown."
-      : "✅ Article OK.";
+      : "🟡 Article OK; citations pending.";
   updateBanner(article, { bg: articleBg, lines: [articleLine] });
   logDebug("Article banner updated", result);
 
@@ -1569,6 +1569,24 @@ async function run(): Promise<void> {
       alerts: referenceResult.alerts,
     });
     logDebug("Reference banner updated", referenceResult);
+
+    const articleOkNoAlerts =
+      result.status === "ok" &&
+      referenceResult.alerts.length === 0 &&
+      referenceResult.failedChecks === 0;
+    const articleHasCitationAlerts = referenceResult.alerts.length > 0 || referenceResult.failedChecks > 0;
+
+    if (articleOkNoAlerts) {
+      updateBanner(article, {
+        bg: "#1b5e20",
+        lines: ["✅ Article OK and citations clear."],
+      });
+    } else if (result.status === "ok" && articleHasCitationAlerts) {
+      updateBanner(article, {
+        bg: "#8b0000",
+        lines: ["⚠️ Article cites retracted/flagged or incomplete citations check."],
+      });
+    }
   }
 }
 
