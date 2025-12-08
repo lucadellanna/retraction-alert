@@ -286,6 +286,77 @@ async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
   return { alerts: results, checked, totalFound: dois.length, failedChecks };
 }
 
+async function fetchOrcidDois(orcidId: string): Promise<string[]> {
+  try {
+    const res = await fetch(`https://pub.orcid.org/v3.0/${encodeURIComponent(orcidId)}/works`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      logDebug("orcid fetch failed", res.status);
+      return [];
+    }
+    const data = await res.json();
+    const groups = data?.group ?? [];
+    const dois: string[] = [];
+    for (const g of groups) {
+      const extIds = g?.["external-ids"]?.["external-id"] ?? [];
+      for (const ext of extIds) {
+        const type = ext?.["external-id-type"];
+        const value = ext?.["external-id-value"];
+        if (typeof value === "string" && typeof type === "string" && type.toLowerCase() === "doi") {
+          const norm = value.trim();
+          if (norm.startsWith("10.")) dois.push(norm);
+        }
+      }
+    }
+    return Array.from(new Set(dois));
+  } catch (error) {
+    logDebug("fetchOrcidDois error", error);
+    return [];
+  }
+}
+
+async function checkOrcidWorks(orcidId: string): Promise<ReferenceCheckResult> {
+  const dois = await fetchOrcidDois(orcidId);
+  if (!dois.length) {
+    return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+  }
+
+  logDebug("checking orcid works", { totalFound: dois.length });
+
+  const results: Array<{ id: string; status: ArticleStatus; noticeUrl?: string; label?: string }> = [];
+  let checked = 0;
+  let failedChecks = 0;
+  let index = 0;
+
+  const worker = async () => {
+    while (index < dois.length) {
+      const current = index++;
+      const refDoi = dois[current];
+      const status = await checkStatus(refDoi);
+      checked += 1;
+      if (status.status === "unknown") {
+        failedChecks += 1;
+      } else if (ALERT_STATUSES.has(status.status)) {
+        results.push({
+          id: refDoi,
+          status: status.status,
+          noticeUrl: status.noticeUrl,
+          label: status.label,
+        });
+      }
+      updateReferenceProgress(checked, dois.length);
+    }
+  };
+
+  const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, dois.length || 1);
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
+
+  return { alerts: results, checked, totalFound: dois.length, failedChecks };
+}
+
 function extractDoiFromDoiOrg(): string | null {
   if (!location.hostname.endsWith("doi.org")) return null;
   const doi = decodeURIComponent(location.pathname.replace(/^\//, "")).trim();
@@ -325,6 +396,12 @@ function extractDoiFromUrlPath(): string | null {
   if (!match) return null;
   const candidate = match[0].replace(/[\].]+$/, ""); // trim trailing punctuation
   return candidate;
+}
+
+function extractOrcidId(): string | null {
+  if (!location.hostname.endsWith("orcid.org")) return null;
+  const match = location.pathname.match(/\/(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/i);
+  return match ? match[1] : null;
 }
 
 function extractPmid(): string | null {
@@ -633,6 +710,19 @@ function updateReferenceProgress(done: number, total: number): void {
 }
 
 async function run(): Promise<void> {
+  const orcidId = extractOrcidId();
+  if (orcidId) {
+    logDebug("Detected ORCID", orcidId);
+    const referenceResult = await checkOrcidWorks(orcidId);
+    injectReferencesBanner(
+      referenceResult.alerts,
+      referenceResult.checked,
+      referenceResult.totalFound,
+      referenceResult.failedChecks
+    );
+    return;
+  }
+
   const id =
     extractDoiFromDoiOrg() ??
     extractMetaDoi() ??

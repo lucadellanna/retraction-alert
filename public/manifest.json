@@ -31,7 +31,8 @@
         "https://osf.io/*",
         "https://academic.oup.com/*",
         "https://psycnet.apa.org/*",
-        "https://www.cambridge.org/*"
+        "https://www.cambridge.org/*",
+        "https://orcid.org/*"
       ],
       "js": [
         "content-script.js"
@@ -40,6 +41,7 @@
     }
   ],
   "host_permissions": [
-    "https://api.crossref.org/*"
+    "https://api.crossref.org/*",
+    "https://pub.orcid.org/*"
   ]
 }
