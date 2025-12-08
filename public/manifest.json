@@ -40,6 +40,9 @@
       "run_at": "document_idle"
     }
   ],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://api.crossref.org/*",
     "https://pub.orcid.org/*"

@@ -8,6 +8,7 @@
   ]);
   var MAX_REFERENCE_CONCURRENCY = 4;
   var SUPPORT_URL = "https://Luca-Dellanna.com/contact";
+  var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
   function logDebug(...args) {
     console.debug("[RetractionAlert]", ...args);
   }
@@ -26,6 +27,44 @@
       if (status !== "ok") return { status, match: text };
     }
     return null;
+  }
+  var memoryCache = /* @__PURE__ */ new Map();
+  function isFresh(entry) {
+    if (!entry) return false;
+    return Date.now() - entry.ts < CACHE_TTL_MS;
+  }
+  async function getCache(key) {
+    try {
+      if (chrome?.storage?.local) {
+        const result = await chrome.storage.local.get([key]);
+        const entry = result[key];
+        if (entry && isFresh(entry)) return entry.value;
+      } else if (memoryCache.has(key)) {
+        const entry = memoryCache.get(key);
+        if (isFresh(entry)) return entry?.value ?? null;
+      }
+    } catch (error) {
+      logDebug("cache get error", error);
+    }
+    return null;
+  }
+  async function setCache(key, value) {
+    const entry = { value, ts: Date.now() };
+    try {
+      if (chrome?.storage?.local) {
+        await chrome.storage.local.set({ [key]: entry });
+      } else {
+        memoryCache.set(key, entry);
+      }
+    } catch (error) {
+      logDebug("cache set error", error);
+    }
+  }
+  async function getCachedStatus(doi) {
+    return getCache(`doi:${doi}`);
+  }
+  async function setCachedStatus(doi, status) {
+    await setCache(`doi:${doi}`, status);
   }
   function detectAlertFromMessage(message) {
     const assertions = message?.assertion ?? [];
@@ -156,11 +195,19 @@
   }
   async function checkStatus(id) {
     if (!id.startsWith("10.")) return { status: "unknown" };
+    const cached = await getCachedStatus(id);
+    if (cached) {
+      logDebug("using cached status", id);
+      return cached;
+    }
     const message = await fetchCrossrefMessage(id);
     if (!message) return { status: "unknown" };
     try {
       const detected = detectAlertFromMessage(message);
       logDebug("checkStatus result", { id, detected });
+      if (detected.status !== "unknown") {
+        void setCachedStatus(id, detected);
+      }
       return detected;
     } catch (error) {
       logDebug("checkStatus error", error);
@@ -213,6 +260,11 @@
     return { alerts: results, checked, totalFound: dois.length, failedChecks };
   }
   async function fetchOrcidDois(orcidId) {
+    const cached = await getCache(`orcid:${orcidId}`);
+    if (cached && cached.length) {
+      logDebug("using cached orcid works", orcidId);
+      return cached;
+    }
     try {
       const res = await fetch(`https://pub.orcid.org/v3.0/${encodeURIComponent(orcidId)}/works`, {
         headers: { Accept: "application/json" },
@@ -236,7 +288,11 @@
           }
         }
       }
-      return Array.from(new Set(dois));
+      const unique = Array.from(new Set(dois));
+      if (unique.length) {
+        void setCache(`orcid:${orcidId}`, unique);
+      }
+      return unique;
     } catch (error) {
       logDebug("fetchOrcidDois error", error);
       return [];

@@ -19,6 +19,7 @@ const ALERT_STATUSES: Set<ArticleStatus> = new Set([
 
 const MAX_REFERENCE_CONCURRENCY = 4;
 const SUPPORT_URL = "https://Luca-Dellanna.com/contact";
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 function logDebug(...args: unknown[]): void {
   // Prefix to make filtering easy in DevTools.
@@ -43,6 +44,51 @@ function findAlertInTexts(
     if (status !== "ok") return { status, match: text };
   }
   return null;
+}
+
+type CacheEntry<T> = { value: T; ts: number };
+const memoryCache = new Map<string, CacheEntry<unknown>>();
+
+function isFresh(entry: CacheEntry<unknown> | undefined): boolean {
+  if (!entry) return false;
+  return Date.now() - entry.ts < CACHE_TTL_MS;
+}
+
+async function getCache<T>(key: string): Promise<T | null> {
+  try {
+    if (chrome?.storage?.local) {
+      const result = await chrome.storage.local.get([key]);
+      const entry = result[key] as CacheEntry<T> | undefined;
+      if (entry && isFresh(entry)) return entry.value;
+    } else if (memoryCache.has(key)) {
+      const entry = memoryCache.get(key) as CacheEntry<T> | undefined;
+      if (isFresh(entry)) return entry?.value ?? null;
+    }
+  } catch (error) {
+    logDebug("cache get error", error);
+  }
+  return null;
+}
+
+async function setCache<T>(key: string, value: T): Promise<void> {
+  const entry: CacheEntry<T> = { value, ts: Date.now() };
+  try {
+    if (chrome?.storage?.local) {
+      await chrome.storage.local.set({ [key]: entry });
+    } else {
+      memoryCache.set(key, entry);
+    }
+  } catch (error) {
+    logDebug("cache set error", error);
+  }
+}
+
+async function getCachedStatus(doi: string): Promise<StatusResult | null> {
+  return getCache<StatusResult>(`doi:${doi}`);
+}
+
+async function setCachedStatus(doi: string, status: StatusResult): Promise<void> {
+  await setCache<StatusResult>(`doi:${doi}`, status);
 }
 
 function detectAlertFromMessage(message: any): StatusResult {
@@ -202,12 +248,21 @@ async function checkStatus(id: string): Promise<StatusResult> {
   // Only DOIs are handled via Crossref for now.
   if (!id.startsWith("10.")) return { status: "unknown" };
 
+  const cached = await getCachedStatus(id);
+  if (cached) {
+    logDebug("using cached status", id);
+    return cached;
+  }
+
   const message = await fetchCrossrefMessage(id);
   if (!message) return { status: "unknown" };
 
   try {
     const detected = detectAlertFromMessage(message);
     logDebug("checkStatus result", { id, detected });
+    if (detected.status !== "unknown") {
+      void setCachedStatus(id, detected);
+    }
     return detected;
   } catch (error) {
     logDebug("checkStatus error", error);
@@ -287,6 +342,12 @@ async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
 }
 
 async function fetchOrcidDois(orcidId: string): Promise<string[]> {
+  const cached = await getCache<string[]>(`orcid:${orcidId}`);
+  if (cached && cached.length) {
+    logDebug("using cached orcid works", orcidId);
+    return cached;
+  }
+
   try {
     const res = await fetch(`https://pub.orcid.org/v3.0/${encodeURIComponent(orcidId)}/works`, {
       headers: { Accept: "application/json" },
@@ -310,7 +371,11 @@ async function fetchOrcidDois(orcidId: string): Promise<string[]> {
         }
       }
     }
-    return Array.from(new Set(dois));
+    const unique = Array.from(new Set(dois));
+    if (unique.length) {
+      void setCache(`orcid:${orcidId}`, unique);
+    }
+    return unique;
   } catch (error) {
     logDebug("fetchOrcidDois error", error);
     return [];
