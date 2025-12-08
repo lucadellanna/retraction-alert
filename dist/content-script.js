@@ -71,6 +71,7 @@
     const assertions = message?.assertion ?? [];
     const updates = message?.["update-to"] ?? [];
     const relations = message?.relation ?? [];
+    const title = Array.isArray(message?.title) ? message.title[0] : void 0;
     const assertionList = Array.isArray(assertions) ? assertions : [];
     const updateList = Array.isArray(updates) ? updates : [];
     const relationList = Array.isArray(relations) ? relations : [];
@@ -90,7 +91,8 @@
         return {
           status: candidate.status,
           label: candidate.match,
-          noticeUrl
+          noticeUrl,
+          title
         };
       }
     }
@@ -105,7 +107,8 @@
         return {
           status: candidate.status,
           label: candidate.match,
-          noticeUrl
+          noticeUrl,
+          title
         };
       }
     }
@@ -120,11 +123,12 @@
         return {
           status: candidate.status,
           label: candidate.match,
-          noticeUrl: relUrl
+          noticeUrl: relUrl,
+          title
         };
       }
     }
-    return { status: "ok" };
+    return { status: "ok", title };
   }
   async function fetchCrossrefMessage(doi) {
     if (!doi.startsWith("10.")) return null;
@@ -265,7 +269,8 @@
             id: refDoi,
             status: status.status,
             noticeUrl: status.noticeUrl,
-            label: status.label
+            label: status.label,
+            title: status.title
           });
         } else {
           counts.ok += 1;
@@ -367,7 +372,8 @@
             id: refDoi,
             status: status.status,
             noticeUrl: status.noticeUrl,
-            label: status.label
+            label: status.label,
+            title: status.title
           });
         } else {
           counts.ok += 1;
@@ -543,7 +549,57 @@
       document.body.style.paddingTop = `${Math.max(0, parsedPadding - height)}px`;
     }
   }
-  function injectReferencesBanner(alerts, checked, totalFound, failedChecks) {
+  function statusLabel(status) {
+    switch (status) {
+      case "retracted":
+        return "Retracted";
+      case "withdrawn":
+        return "Withdrawn";
+      case "expression_of_concern":
+        return "Expression of concern";
+      case "ok":
+        return "OK";
+      default:
+        return "Unknown";
+    }
+  }
+  function countsSummary(label, counts, total, failed) {
+    return `${label}: ${total} total \u2022 retracted ${counts.retracted} \u2022 withdrawn ${counts.withdrawn} \u2022 expression of concern ${counts.expression_of_concern} \u2022 unknown/failed ${Math.max(counts.unknown, failed)}`;
+  }
+  function buildAlertList(items) {
+    const list = document.createElement("div");
+    list.style.display = "flex";
+    list.style.flexDirection = "column";
+    list.style.gap = "4px";
+    list.style.marginTop = "6px";
+    items.forEach((alert) => {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.gap = "6px";
+      row.style.alignItems = "center";
+      const badge = document.createElement("span");
+      badge.textContent = statusLabel(alert.status);
+      badge.style.backgroundColor = "#ffe082";
+      badge.style.color = "#4e342e";
+      badge.style.padding = "2px 6px";
+      badge.style.borderRadius = "6px";
+      badge.style.fontSize = "12px";
+      badge.style.fontWeight = "bold";
+      const link = document.createElement("a");
+      link.href = alert.noticeUrl ?? `https://doi.org/${alert.id}`;
+      link.textContent = alert.title || alert.id;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+      link.style.color = "#ffe082";
+      link.style.textDecoration = "underline";
+      link.style.fontWeight = "bold";
+      row.appendChild(badge);
+      row.appendChild(link);
+      list.appendChild(row);
+    });
+    return list;
+  }
+  function injectReferencesBanner(alerts, checked, totalFound, failedChecks, counts) {
     if (document.getElementById("retraction-alert-ref-banner")) return;
     const primary = document.getElementById("retraction-alert-banner");
     const offset = primary ? primary.getBoundingClientRect().height : 0;
@@ -566,41 +622,23 @@
     banner.style.fontSize = "14px";
     banner.style.fontWeight = "bold";
     banner.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
-    const text = document.createElement("span");
-    if (alerts.length) {
-      text.textContent = `\u26A0\uFE0F Cited retracted/flagged papers found (${alerts.length}).`;
-    } else if (failedChecks > 0) {
-      text.textContent = `\u26A0\uFE0F Citation check incomplete (failed ${failedChecks} of ${totalFound || checked || failedChecks}).`;
-    } else {
-      text.textContent = `\u2705 Checked ${checked} of ${totalFound || checked} citations: no retractions found.`;
-    }
-    banner.appendChild(text);
+    const summary = document.createElement("div");
+    summary.textContent = countsSummary(
+      "Citations",
+      counts,
+      totalFound || checked,
+      failedChecks
+    );
+    banner.appendChild(summary);
     const emailTarget = alerts.length ? extractCorrespondingEmail() : null;
     if (alerts.length) {
-      const list = document.createElement("span");
-      const links = alerts.slice(0, 5).map((alert) => {
-        const a = document.createElement("a");
-        a.href = alert.noticeUrl ?? `https://doi.org/${alert.id}`;
-        a.textContent = alert.id;
-        a.target = "_blank";
-        a.rel = "noreferrer noopener";
-        a.style.color = "#ffe082";
-        a.style.textDecoration = "underline";
-        return a;
-      });
-      links.forEach((link, idx) => {
-        list.appendChild(link);
-        if (idx < links.length - 1) {
-          const sep = document.createTextNode(", ");
-          list.appendChild(sep);
-        }
-      });
-      banner.appendChild(list);
+      banner.appendChild(buildAlertList(alerts));
       if (emailTarget) {
-        const spacer = document.createElement("span");
-        spacer.textContent = " \xB7 ";
-        spacer.style.opacity = "0.6";
-        banner.appendChild(spacer);
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.justifyContent = "center";
+        actions.style.width = "100%";
+        actions.style.marginTop = "6px";
         const button = document.createElement("button");
         button.textContent = "Email corresponding author";
         button.style.border = "none";
@@ -620,9 +658,9 @@
           );
           window.location.href = mailto;
         });
-        banner.appendChild(button);
+        actions.appendChild(button);
+        banner.appendChild(actions);
       }
-    } else if (failedChecks > 0) {
     } else if (failedChecks > 0) {
       const notifyButton = document.createElement("button");
       notifyButton.textContent = "Notify maintainer";
@@ -667,44 +705,34 @@
     banner.style.fontSize = "14px";
     banner.style.fontWeight = "bold";
     banner.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
-    const lines = [];
-    lines.push(`ORCID ${orcidId}`);
-    lines.push(
-      `Works retracted: ${works.alerts.length} (checked ${works.checked}/${works.totalFound || works.checked}${works.failedChecks ? `, failed ${works.failedChecks}` : ""})`
+    const worksSummary = document.createElement("div");
+    worksSummary.textContent = countsSummary(
+      "Works",
+      works.counts,
+      works.totalFound || works.checked,
+      works.failedChecks
     );
-    lines.push(
-      `Cited retractions: ${citations.alerts.length} (checked ${citations.checked}/${citations.totalFound || citations.checked}${citations.failedChecks ? `, failed ${citations.failedChecks}` : ""})`
+    banner.appendChild(worksSummary);
+    const citationsSummary = document.createElement("div");
+    citationsSummary.textContent = countsSummary(
+      "Citations",
+      citations.counts,
+      citations.totalFound || citations.checked,
+      citations.failedChecks
     );
-    const text = document.createElement("div");
-    text.textContent = lines.join(" \u2022 ");
-    banner.appendChild(text);
-    const listSection = document.createElement("div");
-    listSection.style.display = "flex";
-    listSection.style.flexWrap = "wrap";
-    listSection.style.gap = "0.3rem";
-    const addLinks = (label, items) => {
-      if (!items.length) return;
-      const prefix = document.createElement("span");
-      prefix.textContent = label;
-      listSection.appendChild(prefix);
-      items.slice(0, 5).forEach((alert, idx) => {
-        const a = document.createElement("a");
-        a.href = alert.noticeUrl ?? `https://doi.org/${alert.id}`;
-        a.textContent = alert.id;
-        a.target = "_blank";
-        a.rel = "noreferrer noopener";
-        a.style.color = "#ffe082";
-        a.style.textDecoration = "underline";
-        listSection.appendChild(a);
-        if (idx < Math.min(5, items.length) - 1) {
-          const sep = document.createTextNode(", ");
-          listSection.appendChild(sep);
-        }
-      });
-    };
-    addLinks("Works:", works.alerts);
-    addLinks("Citations:", citations.alerts);
-    if (listSection.childNodes.length) banner.appendChild(listSection);
+    banner.appendChild(citationsSummary);
+    if (works.alerts.length) {
+      const worksHeader = document.createElement("div");
+      worksHeader.textContent = "Flagged works:";
+      banner.appendChild(worksHeader);
+      banner.appendChild(buildAlertList(works.alerts));
+    }
+    if (citations.alerts.length) {
+      const citHeader = document.createElement("div");
+      citHeader.textContent = "Flagged citations:";
+      banner.appendChild(citHeader);
+      banner.appendChild(buildAlertList(citations.alerts));
+    }
     document.body.appendChild(banner);
     const bannerHeight = banner.getBoundingClientRect().height;
     const currentPaddingTop = window.getComputedStyle(document.body).paddingTop;
@@ -856,7 +884,8 @@
         referenceResult.alerts,
         referenceResult.checked,
         referenceResult.totalFound,
-        referenceResult.failedChecks
+        referenceResult.failedChecks,
+        referenceResult.counts
       );
       if (referenceResult.alerts.length) {
         logDebug("Reference banner injected", referenceResult.alerts);
