@@ -862,13 +862,15 @@ function ensureBanners(): {
   STATE.articleBanner = article;
   STATE.citationsBanner = citations;
 
-  const updatePadding = () => {
-    const height = wrapper.getBoundingClientRect().height;
-    document.body.style.paddingTop = `${STATE.basePadding + height}px`;
-  };
-  updatePadding();
+  recalcPadding();
 
   return { wrapper, article, citations };
+}
+
+function recalcPadding(): void {
+  if (!STATE.wrapper) return;
+  const height = STATE.wrapper.getBoundingClientRect().height;
+  document.body.style.paddingTop = `${STATE.basePadding + height}px`;
 }
 
 function updateBanner(
@@ -876,6 +878,7 @@ function updateBanner(
   options: { bg: string; lines: string[]; alerts?: AlertItem[] }
 ): void {
   banner.style.backgroundColor = options.bg;
+  banner.style.display = "flex";
   banner.innerHTML = "";
   options.lines.forEach((line) => {
     const div = document.createElement("div");
@@ -886,6 +889,7 @@ function updateBanner(
   if (options.alerts && options.alerts.length) {
     banner.appendChild(buildAlertList(options.alerts));
   }
+  recalcPadding();
 }
 
 function statusLabel(status: ArticleStatus): string {
@@ -1346,12 +1350,6 @@ async function run(): Promise<void> {
   }
 
   if (isNews) {
-    updateBanner(article, { bg: "#1b5e20", lines: ["News page detected."] });
-    updateBanner(citations, {
-      bg: "#fbc02d",
-      lines: ["Checking linked articles..."],
-    });
-
     const anchors = Array.from(
       document.querySelectorAll("a[href]")
     ) as HTMLAnchorElement[];
@@ -1402,12 +1400,19 @@ async function run(): Promise<void> {
     });
 
     if (candidateDois.size === 0) {
-      updateBanner(citations, {
-        bg: "#1b5e20",
-        lines: ["No scientific links found on this page."],
-      });
+      if (STATE.articleBanner) STATE.articleBanner.style.display = "none";
+      if (STATE.citationsBanner) STATE.citationsBanner.style.display = "none";
+      recalcPadding();
       return;
     }
+
+    if (STATE.articleBanner) STATE.articleBanner.style.display = "none";
+    if (STATE.citationsBanner) STATE.citationsBanner.style.display = "flex";
+    updateBanner(citations, {
+      bg: "#fbc02d",
+      lines: ["Checking linked articles..."],
+    });
+    recalcPadding();
 
     const results: AlertItem[] = [];
     let unknown = 0;
