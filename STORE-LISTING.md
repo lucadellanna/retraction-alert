@@ -8,7 +8,7 @@ Retraction Alert automatically checks scholarly articles for retraction status u
 • Shows a clear red banner if the current article is retracted/withdrawn/flagged.  
 • Scans cited references (DOIs) via Crossref: shows a yellow progress bar while checking, then a red banner if any cited papers are flagged, or a green banner if all checked are clear.  
 • If flagged citations exist and a corresponding-author email is found, offers a one-click “Email corresponding author” mailto draft listing the retracted citations.  
-• Runs automatically—no popup or background UI needed.
+• Runs automatically: no pop-up or background UI needed.
 
 **Supported sites**  
 doi.org, PubMed, Nature, Lancet, Science, ScienceDirect, Springer, Wiley, Taylor & Francis, JAMA, NEJM, BMJ, PLOS, ACS, IEEE, ACM, arXiv, bioRxiv, medRxiv, OSF.
