@@ -21,3 +21,25 @@ https://Luca-Dellanna.com/contact
 
 **Disclaimer**  
 Best-effort indicator based on Crossref data; verify status with the publisher/journal. Not legal/medical advice.
+
+---
+
+## Chrome Web Store “Privacy” tab helpers
+
+**Single purpose**  
+Alerts when the current article—or any of its cited papers—is retracted/withdrawn/flagged, using Crossref metadata.
+
+**Permission justification**
+
+- Content scripts on scholarly domains: needed to extract the DOI/PMID from the page (meta tags/URL) to determine retraction status.
+- Host permission `https://api.crossref.org/*`: needed to query Crossref for retraction/withdrawal/expression-of-concern signals for the article and its cited references.
+
+**Data usage**
+
+- Reads the current page only to extract DOI/PMID.
+- Sends those identifiers to api.crossref.org to fetch status and references.
+- Does not collect, store, or share user data; no analytics, no tracking.
+
+**Privacy policy URL**  
+Point to `privacy.md` in this repo (e.g., raw GitHub URL after publishing):  
+`https://raw.githubusercontent.com/lucadellanna/retraction-alert/main/privacy.md`
