@@ -218,7 +218,13 @@
   async function checkReferences(doi) {
     const message = await fetchCrossrefMessage(doi);
     if (!message)
-      return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+      return {
+        alerts: [],
+        checked: 0,
+        totalFound: 0,
+        failedChecks: 1,
+        counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 }
+      };
     const references = message.reference ?? [];
     const refList = Array.isArray(references) ? references : [];
     const dois = refList.map((ref) => {
@@ -237,6 +243,13 @@
     let checked = 0;
     let failedChecks = 0;
     let index = 0;
+    const counts = {
+      ok: 0,
+      retracted: 0,
+      withdrawn: 0,
+      expression_of_concern: 0,
+      unknown: 0
+    };
     const worker = async () => {
       while (index < uniqueDois.length) {
         const current = index++;
@@ -245,13 +258,17 @@
         checked += 1;
         if (status.status === "unknown") {
           failedChecks += 1;
+          counts.unknown += 1;
         } else if (ALERT_STATUSES.has(status.status)) {
+          counts[status.status] += 1;
           results.push({
             id: refDoi,
             status: status.status,
             noticeUrl: status.noticeUrl,
             label: status.label
           });
+        } else {
+          counts.ok += 1;
         }
         updateReferenceProgress(checked, uniqueDois.length);
       }
@@ -262,7 +279,13 @@
     );
     const workers = Array.from({ length: concurrency }, () => worker());
     await Promise.all(workers);
-    return { alerts: results, checked, totalFound: dois.length, failedChecks };
+    return {
+      alerts: results,
+      checked,
+      totalFound: dois.length,
+      failedChecks,
+      counts
+    };
   }
   async function fetchOrcidDois(orcidId) {
     const cached = await getCache(`orcid:${orcidId}`);
@@ -309,13 +332,26 @@
   async function checkOrcidWorks(orcidId) {
     const dois = await fetchOrcidDois(orcidId);
     if (!dois.length) {
-      return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+      return {
+        alerts: [],
+        checked: 0,
+        totalFound: 0,
+        failedChecks: 1,
+        counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 }
+      };
     }
     logDebug("checking orcid works", { totalFound: dois.length });
     const results = [];
     let checked = 0;
     let failedChecks = 0;
     let index = 0;
+    const counts = {
+      ok: 0,
+      retracted: 0,
+      withdrawn: 0,
+      expression_of_concern: 0,
+      unknown: 0
+    };
     const worker = async () => {
       while (index < dois.length) {
         const current = index++;
@@ -324,13 +360,17 @@
         checked += 1;
         if (status.status === "unknown") {
           failedChecks += 1;
+          counts.unknown += 1;
         } else if (ALERT_STATUSES.has(status.status)) {
+          counts[status.status] += 1;
           results.push({
             id: refDoi,
             status: status.status,
             noticeUrl: status.noticeUrl,
             label: status.label
           });
+        } else {
+          counts.ok += 1;
         }
         updateReferenceProgress(checked, dois.length);
       }
@@ -338,7 +378,7 @@
     const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, dois.length || 1);
     const workers = Array.from({ length: concurrency }, () => worker());
     await Promise.all(workers);
-    return { alerts: results, checked, totalFound: dois.length, failedChecks };
+    return { alerts: results, checked, totalFound: dois.length, failedChecks, counts };
   }
   async function collectReferencedDois(dois) {
     const refs = /* @__PURE__ */ new Set();
@@ -361,13 +401,26 @@
   async function checkCitedRetractedFromWorks(dois) {
     const refDois = await collectReferencedDois(dois);
     if (!refDois.length) {
-      return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+      return {
+        alerts: [],
+        checked: 0,
+        totalFound: 0,
+        failedChecks: 1,
+        counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 }
+      };
     }
     logDebug("checking referenced works", { totalFound: refDois.length });
     const results = [];
     let checked = 0;
     let failedChecks = 0;
     let index = 0;
+    const counts = {
+      ok: 0,
+      retracted: 0,
+      withdrawn: 0,
+      expression_of_concern: 0,
+      unknown: 0
+    };
     const worker = async () => {
       while (index < refDois.length) {
         const current = index++;
@@ -376,13 +429,17 @@
         checked += 1;
         if (status.status === "unknown") {
           failedChecks += 1;
+          counts.unknown += 1;
         } else if (ALERT_STATUSES.has(status.status)) {
+          counts[status.status] += 1;
           results.push({
             id: refDoi,
             status: status.status,
             noticeUrl: status.noticeUrl,
             label: status.label
           });
+        } else {
+          counts.ok += 1;
         }
         updateReferenceProgress(checked, refDois.length);
       }
@@ -390,7 +447,7 @@
     const concurrency = Math.min(MAX_REFERENCE_CONCURRENCY, refDois.length || 1);
     const workers = Array.from({ length: concurrency }, () => worker());
     await Promise.all(workers);
-    return { alerts: results, checked, totalFound: refDois.length, failedChecks };
+    return { alerts: results, checked, totalFound: refDois.length, failedChecks, counts };
   }
   function extractDoiFromDoiOrg() {
     if (!location.hostname.endsWith("doi.org")) return null;
@@ -442,7 +499,8 @@
     if (document.getElementById("retraction-alert-banner")) return;
     const banner = document.createElement("div");
     banner.id = "retraction-alert-banner";
-    banner.textContent = "\u26A0\uFE0F This article has been retracted.";
+    const statusText = result.status === "withdrawn" ? "\u26A0\uFE0F This article has been withdrawn." : result.status === "expression_of_concern" ? "\u26A0\uFE0F This article has an expression of concern." : "\u26A0\uFE0F This article has been retracted.";
+    banner.textContent = statusText;
     banner.style.position = "fixed";
     banner.style.top = "0";
     banner.style.left = "0";

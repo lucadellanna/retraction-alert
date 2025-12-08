@@ -289,12 +289,19 @@ interface ReferenceCheckResult {
   checked: number;
   totalFound: number;
   failedChecks: number;
+  counts: Record<ArticleStatus, number>;
 }
 
 async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
   const message = await fetchCrossrefMessage(doi);
   if (!message)
-    return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+    return {
+      alerts: [],
+      checked: 0,
+      totalFound: 0,
+      failedChecks: 1,
+      counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 },
+    };
 
   const references: unknown = message.reference ?? [];
   const refList = Array.isArray(references) ? references : [];
@@ -323,6 +330,13 @@ async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
   let checked = 0;
   let failedChecks = 0;
   let index = 0;
+  const counts: Record<ArticleStatus, number> = {
+    ok: 0,
+    retracted: 0,
+    withdrawn: 0,
+    expression_of_concern: 0,
+    unknown: 0,
+  };
 
   const worker = async () => {
     while (index < uniqueDois.length) {
@@ -332,13 +346,17 @@ async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
       checked += 1;
       if (status.status === "unknown") {
         failedChecks += 1;
+        counts.unknown += 1;
       } else if (ALERT_STATUSES.has(status.status)) {
+        counts[status.status] += 1;
         results.push({
           id: refDoi,
           status: status.status,
           noticeUrl: status.noticeUrl,
           label: status.label,
         });
+      } else {
+        counts.ok += 1;
       }
       updateReferenceProgress(checked, uniqueDois.length);
     }
@@ -351,7 +369,13 @@ async function checkReferences(doi: string): Promise<ReferenceCheckResult> {
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
 
-  return { alerts: results, checked, totalFound: dois.length, failedChecks };
+  return {
+    alerts: results,
+    checked,
+    totalFound: dois.length,
+    failedChecks,
+    counts,
+  };
 }
 
 async function fetchOrcidDois(orcidId: string): Promise<string[]> {
@@ -405,7 +429,13 @@ async function fetchOrcidDois(orcidId: string): Promise<string[]> {
 async function checkOrcidWorks(orcidId: string): Promise<ReferenceCheckResult> {
   const dois = await fetchOrcidDois(orcidId);
   if (!dois.length) {
-    return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+    return {
+      alerts: [],
+      checked: 0,
+      totalFound: 0,
+      failedChecks: 1,
+      counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 },
+    };
   }
 
   logDebug("checking orcid works", { totalFound: dois.length });
@@ -419,6 +449,13 @@ async function checkOrcidWorks(orcidId: string): Promise<ReferenceCheckResult> {
   let checked = 0;
   let failedChecks = 0;
   let index = 0;
+  const counts: Record<ArticleStatus, number> = {
+    ok: 0,
+    retracted: 0,
+    withdrawn: 0,
+    expression_of_concern: 0,
+    unknown: 0,
+  };
 
   const worker = async () => {
     while (index < dois.length) {
@@ -428,13 +465,17 @@ async function checkOrcidWorks(orcidId: string): Promise<ReferenceCheckResult> {
       checked += 1;
       if (status.status === "unknown") {
         failedChecks += 1;
+        counts.unknown += 1;
       } else if (ALERT_STATUSES.has(status.status)) {
+        counts[status.status] += 1;
         results.push({
           id: refDoi,
           status: status.status,
           noticeUrl: status.noticeUrl,
           label: status.label,
         });
+      } else {
+        counts.ok += 1;
       }
       updateReferenceProgress(checked, dois.length);
     }
@@ -444,7 +485,7 @@ async function checkOrcidWorks(orcidId: string): Promise<ReferenceCheckResult> {
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
 
-  return { alerts: results, checked, totalFound: dois.length, failedChecks };
+  return { alerts: results, checked, totalFound: dois.length, failedChecks, counts };
 }
 
 async function collectReferencedDois(dois: string[]): Promise<string[]> {
@@ -471,7 +512,13 @@ async function checkCitedRetractedFromWorks(
 ): Promise<ReferenceCheckResult> {
   const refDois = await collectReferencedDois(dois);
   if (!refDois.length) {
-    return { alerts: [], checked: 0, totalFound: 0, failedChecks: 1 };
+    return {
+      alerts: [],
+      checked: 0,
+      totalFound: 0,
+      failedChecks: 1,
+      counts: { ok: 0, retracted: 0, withdrawn: 0, expression_of_concern: 0, unknown: 1 },
+    };
   }
 
   logDebug("checking referenced works", { totalFound: refDois.length });
@@ -485,6 +532,13 @@ async function checkCitedRetractedFromWorks(
   let checked = 0;
   let failedChecks = 0;
   let index = 0;
+  const counts: Record<ArticleStatus, number> = {
+    ok: 0,
+    retracted: 0,
+    withdrawn: 0,
+    expression_of_concern: 0,
+    unknown: 0,
+  };
 
   const worker = async () => {
     while (index < refDois.length) {
@@ -494,13 +548,17 @@ async function checkCitedRetractedFromWorks(
       checked += 1;
       if (status.status === "unknown") {
         failedChecks += 1;
+        counts.unknown += 1;
       } else if (ALERT_STATUSES.has(status.status)) {
+        counts[status.status] += 1;
         results.push({
           id: refDoi,
           status: status.status,
           noticeUrl: status.noticeUrl,
           label: status.label,
         });
+      } else {
+        counts.ok += 1;
       }
       updateReferenceProgress(checked, refDois.length);
     }
@@ -510,7 +568,7 @@ async function checkCitedRetractedFromWorks(
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
 
-  return { alerts: results, checked, totalFound: refDois.length, failedChecks };
+  return { alerts: results, checked, totalFound: refDois.length, failedChecks, counts };
 }
 
 function extractDoiFromDoiOrg(): string | null {
@@ -574,7 +632,13 @@ function injectBanner(result: StatusResult): void {
 
   const banner = document.createElement("div");
   banner.id = "retraction-alert-banner";
-  banner.textContent = "⚠️ This article has been retracted.";
+  const statusText =
+    result.status === "withdrawn"
+      ? "⚠️ This article has been withdrawn."
+      : result.status === "expression_of_concern"
+        ? "⚠️ This article has an expression of concern."
+        : "⚠️ This article has been retracted.";
+  banner.textContent = statusText;
   banner.style.position = "fixed";
   banner.style.top = "0";
   banner.style.left = "0";
