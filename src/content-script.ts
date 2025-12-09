@@ -18,6 +18,7 @@ import {
   updateBanner,
   countsSummary,
   updateReferenceProgress,
+  setWrapperVisibility,
 } from "./ui/banners";
 import { handleNewsPage } from "./news";
 import { handleGoogleScholarProfile } from "./google-scholar";
@@ -48,6 +49,7 @@ function extractPmid(): string | null {
 
 async function run(): Promise<void> {
   const { article, citations } = ensureBanners();
+  const isOrcidHost = location.hostname.endsWith("orcid.org");
   const handledScholar = handleGoogleScholarProfile(
     article,
     citations,
@@ -57,6 +59,11 @@ async function run(): Promise<void> {
   const handledNews = await handleNewsPage(location.hostname, citations);
   if (handledNews) return;
   const orcidId = extractOrcidId();
+  if (isOrcidHost && !orcidId) {
+    setWrapperVisibility(false);
+    logDebug("Non-profile ORCID page; skipping banners.");
+    return;
+  }
   if (orcidId) {
     logDebug("Detected ORCID", orcidId);
     updateBanner(article, {
