@@ -7,15 +7,22 @@ import { execFileSync } from "node:child_process";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = mkdtempSync(join(tmpdir(), "retraction-alert-test-"));
-const outfile = resolve(outDir, "crossref-status.test.js");
 
-await build({
-  entryPoints: [resolve(root, "tests/crossref-status.test.ts")],
-  bundle: true,
-  platform: "node",
-  target: "node18",
-  format: "esm",
-  outfile,
-});
+const tests = [
+  "tests/crossref-status.test.ts",
+  "tests/pubmed-references.test.ts",
+];
 
-execFileSync("node", [outfile], { stdio: "inherit" });
+for (const test of tests) {
+  const name = test.split("/").pop()?.replace(".ts", ".js") ?? "test.js";
+  const outfile = resolve(outDir, name);
+  await build({
+    entryPoints: [resolve(root, test)],
+    bundle: true,
+    platform: "node",
+    target: "node18",
+    format: "esm",
+    outfile,
+  });
+  execFileSync("node", [outfile], { stdio: "inherit" });
+}
