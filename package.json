@@ -6,7 +6,8 @@
     "build": "node build.mjs",
     "version": "node scripts/sync-version.mjs && git add public/manifest.json",
     "bump": "node scripts/bump.mjs",
-    "test:doi": "node scripts/run-doi-test.mjs"
+    "test:doi": "node scripts/run-doi-test.mjs",
+    "release": "bash scripts/release.sh"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",
