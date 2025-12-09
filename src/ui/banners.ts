@@ -332,6 +332,7 @@ function buildAlertList(alerts: AlertItem[]): HTMLElement {
     row.style.flexWrap = "wrap";
     row.style.gap = "6px";
     row.style.alignItems = "center";
+    row.style.color = COLORS.textLight;
 
     const badge = document.createElement("span");
     badge.textContent = statusLabel(a.status);
@@ -343,7 +344,7 @@ function buildAlertList(alerts: AlertItem[]): HTMLElement {
         : a.status === "expression_of_concern"
         ? "#ef6c00"
         : COLORS.danger;
-    badge.style.color = "#fff";
+    badge.style.color = COLORS.textLight;
     badge.style.fontWeight = "bold";
     row.appendChild(badge);
 

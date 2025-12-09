@@ -11,10 +11,10 @@ import { checkStatus, checkReferences } from "../crossref";
 import {
   countsSummary,
   updateBanner,
-  updateReferenceProgress,
 } from "../ui/banners";
 import { COLORS } from "../ui/colors";
 import { logDebug } from "../log";
+import { createProgressBar, ProgressHandle } from "../ui/progress";
 
 function extractNatureDoiFromPath(loc: Location): string | null {
   if (!loc.hostname.endsWith("nature.com")) return null;
@@ -100,10 +100,7 @@ export async function handleArticlePage(
     bg: COLORS.warning,
     lines: ["Checking article status..."],
   });
-  updateBanner(citationsBanner, {
-    bg: COLORS.warning,
-    lines: ["Checking citations..."],
-  });
+  citationsBanner.style.display = "none";
 
   const additionalPubmedDois =
     loc.hostname.endsWith("pubmed.ncbi.nlm.nih.gov")
@@ -125,15 +122,34 @@ export async function handleArticlePage(
       ? "⚠️ This article has an expression of concern."
       : result.status === "unknown"
       ? "Article status unknown."
-      : "🟡 Article OK; citations pending.";
-  updateBanner(articleBanner, { bg: articleBg, lines: [articleLine] });
+      : "";
+  const initialLines =
+    articleLine === ""
+      ? ["Checking citations..."]
+      : [articleLine, "Checking citations..."];
+  updateBanner(articleBanner, { bg: articleBg, lines: initialLines });
   logDebug("Article banner updated", result);
 
   if (!id.startsWith("10.")) return true;
 
+  const progress: ProgressHandle = createProgressBar(articleBanner, {
+    id: "retraction-alert-article-progress",
+    labelColor: COLORS.textLight,
+    trackColor: COLORS.link,
+    barColor: "#f57f17",
+  });
+
+  let refTotal = 0;
   const referenceResult = await checkReferences(
     id,
-    updateReferenceProgress,
+    (done, total) => {
+      refTotal = total;
+      progress.update(
+        done,
+        total,
+        `Checking citations... (${done}/${total || "?"})`
+      );
+    },
     additionalPubmedDois
   );
   if (additionalPubmedDois.length) {
@@ -146,53 +162,53 @@ export async function handleArticlePage(
     referenceResult.counts.unknown,
     referenceResult.failedChecks
   );
-  updateBanner(citationsBanner, {
-    bg: referenceResult.alerts.length
+  const citationsLine = referenceUnknown
+    ? `Citations: ${
+        referenceResult.totalFound || referenceResult.checked
+      } total • retracted ${referenceResult.counts.retracted} • withdrawn ${
+        referenceResult.counts.withdrawn
+      } • expression of concern ${
+        referenceResult.counts.expression_of_concern
+      } • unknown/failed ${referenceUnknown}`
+    : countsSummary(
+        "Citations",
+        referenceResult.counts,
+        referenceResult.totalFound || referenceResult.checked,
+        referenceResult.failedChecks
+      );
+
+  const finalBg =
+    result.status === "retracted" ||
+    result.status === "withdrawn" ||
+    result.status === "expression_of_concern" ||
+    referenceResult.alerts.length
       ? COLORS.danger
       : referenceUnknown
       ? COLORS.neutral
-      : COLORS.ok,
+      : result.status === "unknown"
+      ? COLORS.warning
+      : COLORS.ok;
+
+  const finalLines =
+    articleLine === "" ? [citationsLine] : [articleLine, citationsLine];
+
+  updateBanner(articleBanner, {
+    bg: finalBg,
     textColor: referenceUnknown ? COLORS.textDark : undefined,
-    lineColors: referenceUnknown
-      ? [COLORS.textDark, COLORS.ok, COLORS.danger]
-      : undefined,
-    lines: referenceUnknown
-      ? [
-          `Citations: ${
-            referenceResult.totalFound || referenceResult.checked
-          } total`,
-          `retracted ${referenceResult.counts.retracted} • withdrawn ${referenceResult.counts.withdrawn} • expression of concern ${referenceResult.counts.expression_of_concern}`,
-          `unknown/failed ${referenceUnknown}`,
-        ]
-      : [
-          countsSummary(
-            "Citations",
-            referenceResult.counts,
-            referenceResult.totalFound || referenceResult.checked,
-            referenceResult.failedChecks
-          ),
-        ],
+    lineColors:
+      referenceUnknown && articleLine !== ""
+        ? [COLORS.textDark, COLORS.textDark]
+        : referenceUnknown
+        ? [COLORS.textDark]
+        : undefined,
+    lines: finalLines,
     alerts: referenceResult.alerts,
   });
+  progress.update(
+    refTotal || referenceResult.checked,
+    refTotal || referenceResult.checked,
+    "Citations checked"
+  );
   logDebug("Reference banner updated", referenceResult);
-
-  const articleOkNoAlerts =
-    result.status === "ok" &&
-    referenceResult.alerts.length === 0 &&
-    referenceResult.failedChecks === 0;
-  const articleHasCitationAlerts =
-    referenceResult.alerts.length > 0 || referenceResult.failedChecks > 0;
-
-  if (articleOkNoAlerts) {
-    updateBanner(articleBanner, {
-      bg: COLORS.ok,
-      lines: ["✅ Article OK and citations clear."],
-    });
-  } else if (result.status === "ok" && articleHasCitationAlerts) {
-    updateBanner(articleBanner, {
-      bg: COLORS.danger,
-      lines: ["⚠️ Article cites retracted/flagged or incomplete citations check."],
-    });
-  }
   return true;
 }
