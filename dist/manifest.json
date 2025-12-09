@@ -6,6 +6,9 @@
   "icons": {
     "128": "icon-128.png"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [

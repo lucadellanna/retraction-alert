@@ -20,6 +20,15 @@ await build({
   minify: false
 });
 
+await build({
+  entryPoints: [resolve(root, "src/background.ts")],
+  outfile: resolve(distDir, "background.js"),
+  bundle: true,
+  format: "iife",
+  target: "es2020",
+  minify: false
+});
+
 cpSync(publicDir, distDir, { recursive: true });
 
 // Package the dist contents for store upload

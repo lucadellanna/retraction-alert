@@ -8,6 +8,40 @@ import { extractDoiFromHref } from "./doi";
 import { logDebug } from "./log";
 import { ArticleStatus, StatusResult, ReferenceCheckResult } from "./types";
 
+async function fetchJsonViaBackground(
+  url: string
+): Promise<Record<string, unknown> | null> {
+  const canMessage =
+    typeof chrome !== "undefined" &&
+    !!chrome.runtime?.id &&
+    typeof chrome.runtime.sendMessage === "function";
+
+  if (canMessage) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "fetchJson",
+        url,
+      });
+      if (response?.ok && response.data) {
+        return response.data as Record<string, unknown>;
+      }
+      logDebug("background fetch failed", { url, response });
+    } catch (error) {
+      logDebug("background fetch error", { url, error });
+    }
+  }
+
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data as Record<string, unknown>;
+  } catch (error) {
+    logDebug("direct fetch error", { url, error });
+    return null;
+  }
+}
+
 function mapStatusFromLabel(label: string): ArticleStatus {
   const normalized = label.toLowerCase();
   if (normalized.includes("retract")) return "retracted";
@@ -39,9 +73,8 @@ export async function fetchCrossrefMessage(
     // string turns "/" into %2F and triggers 400. Encode only exotic chars.
     const safeId = encodeURI(id);
     const url = `https://api.crossref.org/v1/works/${safeId}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const data = await res.json();
+    const data = await fetchJsonViaBackground(url);
+    if (!data) return null;
     const message = data?.message;
     if (message) {
       void setCache(`crossref:${id}`, message);
@@ -99,12 +132,11 @@ export async function fetchWork(
   const safeDoi = encodeURI(doi);
   const targetUrl = `https://api.crossref.org/v1/works/${safeDoi}`;
   try {
-    const res = await fetch(targetUrl, { cache: "no-store" });
-    if (!res.ok) {
-      logDebug("fetchWork error", targetUrl, res.status);
+    const data = await fetchJsonViaBackground(targetUrl);
+    if (!data) {
+      logDebug("fetchWork error", targetUrl, "no data");
       return { status: "unknown" };
     }
-    const data = await res.json();
     const message = data?.message as Record<string, unknown> | undefined;
     if (!message) return { status: "unknown" };
 

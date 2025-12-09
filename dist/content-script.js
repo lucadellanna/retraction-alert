@@ -128,6 +128,32 @@
   }
 
   // src/crossref.ts
+  async function fetchJsonViaBackground(url) {
+    const canMessage = typeof chrome !== "undefined" && !!chrome.runtime?.id && typeof chrome.runtime.sendMessage === "function";
+    if (canMessage) {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "fetchJson",
+          url
+        });
+        if (response?.ok && response.data) {
+          return response.data;
+        }
+        logDebug("background fetch failed", { url, response });
+      } catch (error) {
+        logDebug("background fetch error", { url, error });
+      }
+    }
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data;
+    } catch (error) {
+      logDebug("direct fetch error", { url, error });
+      return null;
+    }
+  }
   function mapStatusFromLabel(label) {
     const normalized = label.toLowerCase();
     if (normalized.includes("retract")) return "retracted";
@@ -150,9 +176,8 @@
       if (cached) return cached;
       const safeId = encodeURI(id);
       const url = `https://api.crossref.org/v1/works/${safeId}`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) return null;
-      const data = await res.json();
+      const data = await fetchJsonViaBackground(url);
+      if (!data) return null;
       const message = data?.message;
       if (message) {
         void setCache(`crossref:${id}`, message);
