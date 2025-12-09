@@ -220,18 +220,47 @@ export async function handleArticlePage(
         : referenceUnknown
         ? [COLORS.textDark]
         : undefined,
-    lines: finalLines,
-    alerts: referenceResult.alerts,
-    actions:
-      mailto && referenceResult.alerts.length
+    lines:
+      referenceResult.alerts.length > 0
         ? [
-            {
-              href: mailto,
-              label: "Email corresponding author",
-            },
+            ...finalLines,
+            "This page cites one or more retracted/flagged papers:",
           ]
-        : undefined,
+        : finalLines,
+    alerts: referenceResult.alerts,
   });
+  if (mailto && referenceResult.alerts.length) {
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.flexWrap = "wrap";
+    actions.style.gap = "8px";
+    actions.style.justifyContent = "center";
+    actions.style.alignItems = "center";
+    actions.style.marginTop = "8px";
+
+    const button = document.createElement("a");
+    button.href = mailto;
+    button.textContent = "Email corresponding author";
+    button.target = "_blank";
+    button.rel = "noreferrer noopener";
+    button.style.background = COLORS.link;
+    button.style.color = "#4e342e";
+    button.style.padding = "8px 14px";
+    button.style.borderRadius = "8px";
+    button.style.fontWeight = "bold";
+    button.style.textDecoration = "none";
+    button.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+
+    const note = document.createElement("span");
+    note.textContent =
+      "Prefilled draft—review before sending. Helps keep citations tidy.";
+    note.style.fontSize = "12px";
+    note.style.color = COLORS.textLight;
+
+    actions.appendChild(button);
+    actions.appendChild(note);
+    articleBanner.appendChild(actions);
+  }
   progress.update(
     refTotal || referenceResult.checked,
     refTotal || referenceResult.checked,
