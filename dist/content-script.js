@@ -495,6 +495,11 @@
     citationsBanner: null,
     visible: true
   };
+  function clearUiState() {
+    STATE.wrapper = null;
+    STATE.articleBanner = null;
+    STATE.citationsBanner = null;
+  }
   function recalcPadding() {
     if (!STATE.wrapper) return;
     if (!STATE.visible) {
@@ -1149,4 +1154,30 @@
   } else {
     void run();
   }
+  var navWatcherStarted = false;
+  function startNavigationWatcher() {
+    if (navWatcherStarted) return;
+    navWatcherStarted = true;
+    let lastUrl = location.href;
+    const handleChange = () => {
+      if (location.href === lastUrl) return;
+      lastUrl = location.href;
+      clearUiState();
+      void run();
+    };
+    const origPush = history.pushState;
+    history.pushState = function(...args) {
+      const ret = origPush.apply(this, args);
+      handleChange();
+      return ret;
+    };
+    const origReplace = history.replaceState;
+    history.replaceState = function(...args) {
+      const ret = origReplace.apply(this, args);
+      handleChange();
+      return ret;
+    };
+    window.addEventListener("popstate", handleChange);
+  }
+  startNavigationWatcher();
 })();
