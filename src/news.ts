@@ -8,12 +8,12 @@ import {
   countsSummary,
   updateBanner,
   setWrapperVisibility,
-  updateReferenceProgress,
 } from "./ui/banners";
 import { COLORS } from "./ui/colors";
 import { checkStatus, checkReferences } from "./crossref";
 import { extractDoiFromHref, mapPublisherUrlToDoi } from "./doi";
 import { logDebug } from "./log";
+import { createProgressBar, ProgressHandle } from "./ui/progress";
 
 export const NEWS_HOSTS = [
   "abc.net.au",
@@ -110,10 +110,29 @@ export async function handleNewsPage(
   }
 
   setWrapperVisibility(true);
+  citations.style.display = "flex";
   updateBanner(citations, {
     bg: COLORS.warning,
     lines: ["Checking linked articles..."],
   });
+  let progress: ProgressHandle | null = null;
+  progress = createProgressBar(citations, {
+    id: "retraction-alert-news-progress",
+    labelColor: COLORS.textLight,
+    trackColor: COLORS.link,
+    barColor: "#f57f17",
+  });
+  const totalCandidates = candidateDois.size;
+  let processed = 0;
+  const updateProgress = () => {
+    const remaining = Math.max(totalCandidates - processed, 0);
+    progress?.update(
+      processed,
+      totalCandidates,
+      `Linked articles: ${processed}/${totalCandidates} checked • remaining ${remaining}`
+    );
+  };
+  updateProgress();
 
   const results: AlertEntry[] = [];
   const referenceAlerts: AlertEntry[] = [];
@@ -133,7 +152,7 @@ export async function handleNewsPage(
       });
     }
 
-    const referenceResult = await checkReferences(doi, updateReferenceProgress);
+    const referenceResult = await checkReferences(doi, () => {});
     referenceFailedChecks += referenceResult.failedChecks;
     if (referenceResult.alerts.length) {
       referenceAlerts.push(
@@ -147,6 +166,8 @@ export async function handleNewsPage(
         }))
       );
     }
+    processed += 1;
+    updateProgress();
   }
 
   const counts: Record<ArticleStatus, number> = {
@@ -194,18 +215,18 @@ export async function handleNewsPage(
       ? COLORS.warning
       : COLORS.ok,
     lines: [
-      countsSummary(
-        "Linked articles",
-        counts,
-        candidateDois.size,
-        unknown + referenceFailedChecks
-      ),
+      `Linked articles: ${candidateDois.size} total • retracted ${counts.retracted} • withdrawn ${counts.withdrawn} • expression of concern ${counts.expression_of_concern} • unknown/failed ${unknown + referenceFailedChecks}`,
       ...(referenceAlerts.length
         ? [`Flagged references found in linked papers: ${referenceAlerts.length}`]
         : []),
     ],
     alerts: allAlerts,
   });
+  progress?.update(
+    totalCandidates,
+    totalCandidates,
+    `Linked articles: ${candidateDois.size} checked`
+  );
 
   if (mailto) {
     const actions = document.createElement("div");
