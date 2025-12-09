@@ -1,5 +1,6 @@
-import { setWrapperVisibility, updateBanner } from "./ui/banners";
-import { logDebug } from "./log";
+import { setWrapperVisibility, updateBanner } from "../ui/banners";
+import { COLORS } from "../ui/colors";
+import { logDebug } from "../log";
 
 function isScholarProfile(loc: Location): boolean {
   const isScholarHost = loc.hostname.includes("scholar.google.");
@@ -18,7 +19,7 @@ function getScholarName(): string | null {
 
 function findOrcidUrl(loc: Location): string | null {
   const anchors = Array.from(
-    document.querySelectorAll("a[href*=\"orcid.org\"]")
+    document.querySelectorAll('a[href*="orcid.org"]')
   ) as HTMLAnchorElement[];
 
   for (const anchor of anchors) {
@@ -40,11 +41,11 @@ function findOrcidUrl(loc: Location): string | null {
   return null;
 }
 
-export function handleGoogleScholarProfile(
+export async function handleScholarProfile(
   articleBanner: HTMLDivElement,
   citationsBanner: HTMLDivElement,
   loc: Location
-): boolean {
+): Promise<boolean> {
   if (!isScholarProfile(loc)) return false;
 
   const orcidUrl = findOrcidUrl(loc);
@@ -52,7 +53,7 @@ export function handleGoogleScholarProfile(
     setWrapperVisibility(true);
     citationsBanner.style.display = "flex";
     updateBanner(articleBanner, {
-      bg: "#1b5e20",
+      bg: COLORS.ok,
       lines: ["View this author on ORCID to run retraction checks."],
       actions: [
         {
@@ -63,7 +64,7 @@ export function handleGoogleScholarProfile(
       ],
     });
     updateBanner(citationsBanner, {
-      bg: "#1b5e20",
+      bg: COLORS.ok,
       lines: ["Checks run on the ORCID profile."],
     });
   } else {
@@ -79,7 +80,7 @@ export function handleGoogleScholarProfile(
     setWrapperVisibility(true);
     citationsBanner.style.display = "none";
     updateBanner(articleBanner, {
-      bg: "#fbc02d",
+      bg: COLORS.warning,
       lines: ["Find this author on ORCID to run retraction checks."],
       actions: [
         {

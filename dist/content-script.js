@@ -46,55 +46,6 @@
     console.debug("[RetractionAlert]", ...args);
   }
 
-  // src/doi.ts
-  function extractDoiFromHref(href) {
-    try {
-      const decoded = decodeURIComponent(href);
-      const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
-      if (!match) return null;
-      return match[0].replace(/[\].]+$/, "");
-    } catch {
-      return null;
-    }
-  }
-  function mapPublisherUrlToDoi(href) {
-    try {
-      const url = new URL(href);
-      if (url.hostname.includes("nature.com")) {
-        const m = url.pathname.match(/\/articles\/([^/?#]+)/);
-        if (m && m[1]) return `10.1038/${m[1]}`;
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  }
-  function extractLancetDoiFromPath(location2) {
-    if (!location2.hostname.endsWith("thelancet.com")) return null;
-    const piiMatch = location2.pathname.match(/\/PII([A-Za-z0-9().-]+)/i);
-    if (!piiMatch) return null;
-    const pii = piiMatch[1];
-    const doiStem = pii.startsWith("S") ? pii : pii.replace(/^P?II/, "");
-    return `10.1016/${doiStem}`;
-  }
-  function extractDoiFromUrlPath(url) {
-    const decoded = decodeURIComponent(url);
-    const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
-    if (!match) return null;
-    const candidate = match[0].replace(/[\].]+$/, "");
-    return candidate;
-  }
-  function extractDoiFromDoiOrg(location2) {
-    if (!location2.hostname.endsWith("doi.org")) return null;
-    const doi = decodeURIComponent(location2.pathname.replace(/^\//, "")).trim();
-    return doi || null;
-  }
-  function extractMetaDoi(doc) {
-    const meta = doc.querySelector('meta[name="citation_doi"]');
-    const doi = meta?.getAttribute("content")?.trim() ?? "";
-    return doi || null;
-  }
-
   // src/cache.ts
   var memoryCache = /* @__PURE__ */ new Map();
   function isFresh(entry) {
@@ -125,6 +76,350 @@
       }
     } catch {
     }
+  }
+
+  // src/ui/colors.ts
+  var COLORS = {
+    ok: "#1b5e20",
+    // deep green
+    warning: "#fbc02d",
+    // amber
+    danger: "#8b0000",
+    // dark red
+    link: "#ffe082",
+    // pale yellow
+    badge: "#b71c1c",
+    // badge red
+    textDark: "#000000",
+    textLight: "#ffffff",
+    neutral: "#ffffff"
+  };
+
+  // src/ui/banners.ts
+  var STATE = {
+    basePadding: 0,
+    wrapper: null,
+    articleBanner: null,
+    citationsBanner: null,
+    visible: true
+  };
+  function clearUiState() {
+    STATE.wrapper = null;
+    STATE.articleBanner = null;
+    STATE.citationsBanner = null;
+  }
+  function recalcPadding() {
+    if (!STATE.wrapper) return;
+    if (!STATE.visible) {
+      document.body.style.paddingTop = `${STATE.basePadding}px`;
+      return;
+    }
+    const height = STATE.wrapper.getBoundingClientRect().height;
+    document.body.style.paddingTop = `${STATE.basePadding + height}px`;
+  }
+  function removeProgressBanner() {
+    const banner = document.getElementById("retraction-alert-ref-progress");
+    if (banner) {
+      banner.remove();
+      recalcPadding();
+    }
+  }
+  function setWrapperVisibility(visible) {
+    if (!STATE.wrapper) return;
+    STATE.visible = visible;
+    STATE.wrapper.style.display = visible ? "flex" : "none";
+    recalcPadding();
+  }
+  function ensureBanners() {
+    if (STATE.wrapper && STATE.articleBanner && STATE.citationsBanner) {
+      return {
+        wrapper: STATE.wrapper,
+        article: STATE.articleBanner,
+        citations: STATE.citationsBanner
+      };
+    }
+    if (!STATE.basePadding) {
+      STATE.basePadding = Number.parseFloat(window.getComputedStyle(document.body).paddingTop) || 0;
+    }
+    const wrapper = document.createElement("div");
+    wrapper.id = "retraction-alert-wrapper";
+    wrapper.style.position = "fixed";
+    wrapper.style.top = "0";
+    wrapper.style.left = "0";
+    wrapper.style.right = "0";
+    wrapper.style.zIndex = "999998";
+    wrapper.style.display = "flex";
+    wrapper.style.flexDirection = "column";
+    wrapper.style.gap = "4px";
+    const makeBanner = () => {
+      const div = document.createElement("div");
+      div.style.minHeight = "44px";
+      div.style.display = "flex";
+      div.style.flexDirection = "column";
+      div.style.gap = "4px";
+      div.style.alignItems = "center";
+      div.style.padding = "10px 14px";
+      div.style.fontFamily = "Arial, sans-serif";
+      div.style.fontSize = "14px";
+      div.style.fontWeight = "bold";
+      div.style.color = COLORS.textLight;
+      div.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
+      div.style.borderRadius = "0";
+      return div;
+    };
+    const article = makeBanner();
+    const citations = makeBanner();
+    wrapper.appendChild(article);
+    wrapper.appendChild(citations);
+    document.body.appendChild(wrapper);
+    STATE.wrapper = wrapper;
+    STATE.articleBanner = article;
+    STATE.citationsBanner = citations;
+    recalcPadding();
+    return { wrapper, article, citations };
+  }
+  function ensureReferenceProgressBanner() {
+    const existing = document.getElementById(
+      "retraction-alert-ref-progress"
+    );
+    if (existing) return existing;
+    const { wrapper } = ensureBanners();
+    const container = document.createElement("div");
+    container.id = "retraction-alert-ref-progress";
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.alignItems = "center";
+    container.style.gap = "6px";
+    container.style.padding = "10px 14px";
+    container.style.backgroundColor = COLORS.warning;
+    container.style.color = "#000";
+    container.style.fontFamily = "Arial, sans-serif";
+    container.style.fontSize = "13px";
+    container.style.fontWeight = "bold";
+    container.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.2)";
+    const label = document.createElement("div");
+    label.id = "retraction-alert-ref-progress-label";
+    label.textContent = "Checking citations...";
+    container.appendChild(label);
+    const barOuter = document.createElement("div");
+    barOuter.style.width = "320px";
+    barOuter.style.maxWidth = "90vw";
+    barOuter.style.height = "8px";
+    barOuter.style.backgroundColor = COLORS.link;
+    barOuter.style.borderRadius = "999px";
+    barOuter.style.overflow = "hidden";
+    const barInner = document.createElement("div");
+    barInner.id = "retraction-alert-ref-progress-bar";
+    barInner.style.height = "100%";
+    barInner.style.width = "0%";
+    barInner.style.backgroundColor = "#f57f17";
+    barInner.style.transition = "width 0.2s ease-out";
+    barOuter.appendChild(barInner);
+    container.appendChild(barOuter);
+    wrapper.appendChild(container);
+    recalcPadding();
+    return container;
+  }
+  function updateReferenceProgress(done, total) {
+    if (total <= 0) return;
+    const banner = ensureReferenceProgressBanner();
+    const label = document.getElementById("retraction-alert-ref-progress-label");
+    const bar = document.getElementById(
+      "retraction-alert-ref-progress-bar"
+    );
+    if (label) {
+      label.textContent = `Checking citations... (${done}/${total})`;
+    }
+    if (bar) {
+      const pct = Math.min(100, Math.max(0, Math.round(done / total * 100)));
+      bar.style.width = `${pct}%`;
+    }
+    if (done >= total) {
+      setTimeout(() => {
+        removeProgressBanner();
+      }, 400);
+    }
+  }
+  function updateBanner(banner, options) {
+    banner.style.backgroundColor = options.bg;
+    banner.style.color = options.textColor ?? COLORS.textLight;
+    banner.style.display = "flex";
+    banner.innerHTML = "";
+    options.lines.forEach((line, idx) => {
+      const div = document.createElement("div");
+      div.textContent = line;
+      div.style.textAlign = "center";
+      const lineColor = options.lineColors?.[idx];
+      if (lineColor) div.style.color = lineColor;
+      banner.appendChild(div);
+    });
+    if (options.alerts && options.alerts.length) {
+      banner.appendChild(buildAlertList(options.alerts));
+    }
+    if (options.actions && options.actions.length) {
+      const actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.flexWrap = "wrap";
+      actions.style.gap = "8px";
+      actions.style.justifyContent = "center";
+      options.actions.forEach((action) => {
+        const link = document.createElement("a");
+        link.href = action.href;
+        link.textContent = action.label;
+        if (action.title) link.title = action.title;
+        link.target = "_blank";
+        link.rel = "noreferrer noopener";
+        link.style.background = COLORS.link;
+        link.style.color = "#4e342e";
+        link.style.padding = "6px 10px";
+        link.style.borderRadius = "6px";
+        link.style.fontWeight = "bold";
+        link.style.textDecoration = "none";
+        link.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+        actions.appendChild(link);
+      });
+      banner.appendChild(actions);
+    }
+    recalcPadding();
+  }
+  function statusLabel(status) {
+    switch (status) {
+      case "retracted":
+        return "Retracted";
+      case "withdrawn":
+        return "Withdrawn";
+      case "expression_of_concern":
+        return "Expression of concern";
+      case "ok":
+        return "OK";
+      default:
+        return "Unknown";
+    }
+  }
+  function countsSummary(label, counts, total, failed) {
+    return `${label}: ${total} total \u2022 retracted ${counts.retracted} \u2022 withdrawn ${counts.withdrawn} \u2022 expression of concern ${counts.expression_of_concern} \u2022 unknown/failed ${Math.max(counts.unknown, failed)}`;
+  }
+  function buildAlertList(alerts) {
+    const list = document.createElement("div");
+    list.style.display = "flex";
+    list.style.flexDirection = "column";
+    list.style.gap = "4px";
+    alerts.forEach((a) => {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.flexWrap = "wrap";
+      row.style.gap = "6px";
+      row.style.alignItems = "center";
+      const badge = document.createElement("span");
+      badge.textContent = statusLabel(a.status);
+      badge.style.padding = "2px 6px";
+      badge.style.borderRadius = "4px";
+      badge.style.background = a.status === "ok" ? "#2e7d32" : a.status === "expression_of_concern" ? "#ef6c00" : COLORS.danger;
+      badge.style.color = "#fff";
+      badge.style.fontWeight = "bold";
+      row.appendChild(badge);
+      const link = document.createElement("a");
+      link.href = `https://doi.org/${a.id}`;
+      link.textContent = a.title ? `${a.title} (${a.id})` : a.id;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+      link.style.color = COLORS.link;
+      link.style.textDecoration = "underline";
+      row.appendChild(link);
+      if (a.noticeUrl) {
+        const notice = document.createElement("a");
+        notice.href = a.noticeUrl.startsWith("http") ? a.noticeUrl : `https://doi.org/${a.noticeUrl}`;
+        notice.textContent = a.label ?? "Notice";
+        notice.target = "_blank";
+        notice.rel = "noreferrer noopener";
+        notice.style.color = "#c5e1a5";
+        notice.style.textDecoration = "underline";
+        row.appendChild(notice);
+      }
+      list.appendChild(row);
+    });
+    return list;
+  }
+
+  // src/handlers/scholar.ts
+  function isScholarProfile(loc) {
+    const isScholarHost = loc.hostname.includes("scholar.google.");
+    const isProfilePath = loc.pathname.includes("/citations");
+    if (!isScholarHost || !isProfilePath) return false;
+    const params = new URLSearchParams(loc.search);
+    return params.has("user");
+  }
+  function getScholarName() {
+    const nameEl = document.querySelector("#gsc_prf_in");
+    const text = nameEl?.textContent?.trim();
+    return text || null;
+  }
+  function findOrcidUrl(loc) {
+    const anchors = Array.from(
+      document.querySelectorAll('a[href*="orcid.org"]')
+    );
+    for (const anchor of anchors) {
+      const href = anchor.getAttribute("href") || anchor.href;
+      if (!href) continue;
+      try {
+        const url = new URL(href, loc.href);
+        const match = url.pathname.match(
+          /(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/
+        );
+        if (match?.[1]) {
+          return `https://orcid.org/${match[1]}`;
+        }
+      } catch {
+      }
+    }
+    return null;
+  }
+  async function handleScholarProfile(articleBanner, citationsBanner, loc) {
+    if (!isScholarProfile(loc)) return false;
+    const orcidUrl = findOrcidUrl(loc);
+    if (orcidUrl) {
+      setWrapperVisibility(true);
+      citationsBanner.style.display = "flex";
+      updateBanner(articleBanner, {
+        bg: COLORS.ok,
+        lines: ["View this author on ORCID to run retraction checks."],
+        actions: [
+          {
+            href: orcidUrl,
+            label: "View on ORCID",
+            title: "Open ORCID profile to run retraction checks"
+          }
+        ]
+      });
+      updateBanner(citationsBanner, {
+        bg: COLORS.ok,
+        lines: ["Checks run on the ORCID profile."]
+      });
+    } else {
+      const name = getScholarName();
+      if (!name) {
+        setWrapperVisibility(false);
+        return true;
+      }
+      const searchUrl = `https://orcid.org/orcid-search/search?searchQuery=${encodeURIComponent(
+        name
+      )}`;
+      setWrapperVisibility(true);
+      citationsBanner.style.display = "none";
+      updateBanner(articleBanner, {
+        bg: COLORS.warning,
+        lines: ["Find this author on ORCID to run retraction checks."],
+        actions: [
+          {
+            href: searchUrl,
+            label: "Search on ORCID",
+            title: "Open ORCID search for this author"
+          }
+        ]
+      });
+    }
+    logDebug("Google Scholar profile handled", { hasOrcid: Boolean(orcidUrl) });
+    return true;
   }
 
   // src/crossref.ts
@@ -556,250 +851,281 @@
     };
   }
 
-  // src/ui/banners.ts
-  var STATE = {
-    basePadding: 0,
-    wrapper: null,
-    articleBanner: null,
-    citationsBanner: null,
-    visible: true
-  };
-  function clearUiState() {
-    STATE.wrapper = null;
-    STATE.articleBanner = null;
-    STATE.citationsBanner = null;
-  }
-  function recalcPadding() {
-    if (!STATE.wrapper) return;
-    if (!STATE.visible) {
-      document.body.style.paddingTop = `${STATE.basePadding}px`;
-      return;
-    }
-    const height = STATE.wrapper.getBoundingClientRect().height;
-    document.body.style.paddingTop = `${STATE.basePadding + height}px`;
-  }
-  function removeProgressBanner() {
-    const banner = document.getElementById("retraction-alert-ref-progress");
-    if (banner) {
-      banner.remove();
-      recalcPadding();
+  // src/doi.ts
+  function extractDoiFromHref(href) {
+    try {
+      const decoded = decodeURIComponent(href);
+      const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
+      if (!match) return null;
+      return match[0].replace(/[\].]+$/, "");
+    } catch {
+      return null;
     }
   }
-  function setWrapperVisibility(visible) {
-    if (!STATE.wrapper) return;
-    STATE.visible = visible;
-    STATE.wrapper.style.display = visible ? "flex" : "none";
-    recalcPadding();
-  }
-  function ensureBanners() {
-    if (STATE.wrapper && STATE.articleBanner && STATE.citationsBanner) {
-      return {
-        wrapper: STATE.wrapper,
-        article: STATE.articleBanner,
-        citations: STATE.citationsBanner
-      };
+  function mapPublisherUrlToDoi(href) {
+    try {
+      const url = new URL(href);
+      if (url.hostname.includes("nature.com")) {
+        const m = url.pathname.match(/\/articles\/([^/?#]+)/);
+        if (m && m[1]) return `10.1038/${m[1]}`;
+      }
+    } catch {
+      return null;
     }
-    if (!STATE.basePadding) {
-      STATE.basePadding = Number.parseFloat(window.getComputedStyle(document.body).paddingTop) || 0;
-    }
-    const wrapper = document.createElement("div");
-    wrapper.id = "retraction-alert-wrapper";
-    wrapper.style.position = "fixed";
-    wrapper.style.top = "0";
-    wrapper.style.left = "0";
-    wrapper.style.right = "0";
-    wrapper.style.zIndex = "999998";
-    wrapper.style.display = "flex";
-    wrapper.style.flexDirection = "column";
-    wrapper.style.gap = "4px";
-    const makeBanner = () => {
-      const div = document.createElement("div");
-      div.style.minHeight = "44px";
-      div.style.display = "flex";
-      div.style.flexDirection = "column";
-      div.style.gap = "4px";
-      div.style.alignItems = "center";
-      div.style.padding = "10px 14px";
-      div.style.fontFamily = "Arial, sans-serif";
-      div.style.fontSize = "14px";
-      div.style.fontWeight = "bold";
-      div.style.color = "#ffffff";
-      div.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
-      div.style.borderRadius = "0";
-      return div;
-    };
-    const article = makeBanner();
-    const citations = makeBanner();
-    wrapper.appendChild(article);
-    wrapper.appendChild(citations);
-    document.body.appendChild(wrapper);
-    STATE.wrapper = wrapper;
-    STATE.articleBanner = article;
-    STATE.citationsBanner = citations;
-    recalcPadding();
-    return { wrapper, article, citations };
+    return null;
   }
-  function ensureReferenceProgressBanner() {
-    const existing = document.getElementById(
-      "retraction-alert-ref-progress"
+  function extractLancetDoiFromPath(location2) {
+    if (!location2.hostname.endsWith("thelancet.com")) return null;
+    const piiMatch = location2.pathname.match(/\/PII([A-Za-z0-9().-]+)/i);
+    if (!piiMatch) return null;
+    const pii = piiMatch[1];
+    const doiStem = pii.startsWith("S") ? pii : pii.replace(/^P?II/, "");
+    return `10.1016/${doiStem}`;
+  }
+  function extractDoiFromUrlPath(url) {
+    const decoded = decodeURIComponent(url);
+    const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
+    if (!match) return null;
+    const candidate = match[0].replace(/[\].]+$/, "");
+    return candidate;
+  }
+  function extractDoiFromDoiOrg(location2) {
+    if (!location2.hostname.endsWith("doi.org")) return null;
+    const doi = decodeURIComponent(location2.pathname.replace(/^\//, "")).trim();
+    return doi || null;
+  }
+  function extractMetaDoi(doc) {
+    const meta = doc.querySelector('meta[name="citation_doi"]');
+    const doi = meta?.getAttribute("content")?.trim() ?? "";
+    return doi || null;
+  }
+
+  // src/handlers/orcid.ts
+  function highlightOrcidAlerts(alerts) {
+    if (!alerts.length) return;
+    const alertMap = new Map(
+      alerts.map((a) => [a.id.toLowerCase(), a])
     );
-    if (existing) return existing;
-    const { wrapper } = ensureBanners();
-    const container = document.createElement("div");
-    container.id = "retraction-alert-ref-progress";
-    container.style.display = "flex";
-    container.style.flexDirection = "column";
-    container.style.alignItems = "center";
-    container.style.gap = "6px";
-    container.style.padding = "10px 14px";
-    container.style.backgroundColor = "#fbc02d";
-    container.style.color = "#000";
-    container.style.fontFamily = "Arial, sans-serif";
-    container.style.fontSize = "13px";
-    container.style.fontWeight = "bold";
-    container.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.2)";
-    const label = document.createElement("div");
-    label.id = "retraction-alert-ref-progress-label";
-    label.textContent = "Checking citations...";
-    container.appendChild(label);
-    const barOuter = document.createElement("div");
-    barOuter.style.width = "320px";
-    barOuter.style.maxWidth = "90vw";
-    barOuter.style.height = "8px";
-    barOuter.style.backgroundColor = "#ffe082";
-    barOuter.style.borderRadius = "999px";
-    barOuter.style.overflow = "hidden";
-    const barInner = document.createElement("div");
-    barInner.id = "retraction-alert-ref-progress-bar";
-    barInner.style.height = "100%";
-    barInner.style.width = "0%";
-    barInner.style.backgroundColor = "#f57f17";
-    barInner.style.transition = "width 0.2s ease-out";
-    barOuter.appendChild(barInner);
-    container.appendChild(barOuter);
-    wrapper.appendChild(container);
-    recalcPadding();
-    return container;
-  }
-  function updateReferenceProgress(done, total) {
-    if (total <= 0) return;
-    const banner = ensureReferenceProgressBanner();
-    const label = document.getElementById("retraction-alert-ref-progress-label");
-    const bar = document.getElementById(
-      "retraction-alert-ref-progress-bar"
+    const anchors = Array.from(
+      document.querySelectorAll("a[href]")
     );
-    if (label) {
-      label.textContent = `Checking citations... (${done}/${total})`;
-    }
-    if (bar) {
-      const pct = Math.min(100, Math.max(0, Math.round(done / total * 100)));
-      bar.style.width = `${pct}%`;
-    }
-    if (done >= total) {
-      setTimeout(() => {
-        removeProgressBanner();
-      }, 400);
-    }
-  }
-  function updateBanner(banner, options) {
-    banner.style.backgroundColor = options.bg;
-    banner.style.color = options.textColor ?? "#ffffff";
-    banner.style.display = "flex";
-    banner.innerHTML = "";
-    options.lines.forEach((line, idx) => {
-      const div = document.createElement("div");
-      div.textContent = line;
-      div.style.textAlign = "center";
-      const lineColor = options.lineColors?.[idx];
-      if (lineColor) div.style.color = lineColor;
-      banner.appendChild(div);
-    });
-    if (options.alerts && options.alerts.length) {
-      banner.appendChild(buildAlertList(options.alerts));
-    }
-    if (options.actions && options.actions.length) {
-      const actions = document.createElement("div");
-      actions.style.display = "flex";
-      actions.style.flexWrap = "wrap";
-      actions.style.gap = "8px";
-      actions.style.justifyContent = "center";
-      options.actions.forEach((action) => {
-        const link = document.createElement("a");
-        link.href = action.href;
-        link.textContent = action.label;
-        if (action.title) link.title = action.title;
-        link.target = "_blank";
-        link.rel = "noreferrer noopener";
-        link.style.background = "#ffe082";
-        link.style.color = "#4e342e";
-        link.style.padding = "6px 10px";
-        link.style.borderRadius = "6px";
-        link.style.fontWeight = "bold";
-        link.style.textDecoration = "none";
-        link.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
-        actions.appendChild(link);
-      });
-      banner.appendChild(actions);
-    }
-    recalcPadding();
-  }
-  function statusLabel(status) {
-    switch (status) {
-      case "retracted":
-        return "Retracted";
-      case "withdrawn":
-        return "Withdrawn";
-      case "expression_of_concern":
-        return "Expression of concern";
-      case "ok":
-        return "OK";
-      default:
-        return "Unknown";
-    }
-  }
-  function countsSummary(label, counts, total, failed) {
-    return `${label}: ${total} total \u2022 retracted ${counts.retracted} \u2022 withdrawn ${counts.withdrawn} \u2022 expression of concern ${counts.expression_of_concern} \u2022 unknown/failed ${Math.max(counts.unknown, failed)}`;
-  }
-  function buildAlertList(alerts) {
-    const list = document.createElement("div");
-    list.style.display = "flex";
-    list.style.flexDirection = "column";
-    list.style.gap = "4px";
-    alerts.forEach((a) => {
-      const row = document.createElement("div");
-      row.style.display = "flex";
-      row.style.flexWrap = "wrap";
-      row.style.gap = "6px";
-      row.style.alignItems = "center";
+    anchors.forEach((anchor) => {
+      const href = anchor.getAttribute("href") || anchor.href || "";
+      const text = anchor.textContent || "";
+      const doi = extractDoiFromHref(href) || extractDoiFromHref(text);
+      if (!doi) return;
+      const alert = alertMap.get(doi.toLowerCase());
+      if (!alert) return;
+      const target = anchor.closest("[data-work-id]") || anchor.closest("li") || anchor;
+      if (!target || target.dataset.retractionAlertMarked) return;
+      target.dataset.retractionAlertMarked = "1";
+      target.style.borderLeft = `4px solid ${COLORS.badge}`;
+      target.style.backgroundColor = "#ffebee";
+      target.style.paddingLeft = "8px";
       const badge = document.createElement("span");
-      badge.textContent = statusLabel(a.status);
+      badge.textContent = "Retracted";
+      badge.style.background = COLORS.badge;
+      badge.style.color = "#fff";
+      badge.style.fontSize = "12px";
+      badge.style.fontWeight = "bold";
       badge.style.padding = "2px 6px";
       badge.style.borderRadius = "4px";
-      badge.style.background = a.status === "ok" ? "#2e7d32" : a.status === "expression_of_concern" ? "#ef6c00" : "#8b0000";
-      badge.style.color = "#fff";
-      badge.style.fontWeight = "bold";
-      row.appendChild(badge);
-      const link = document.createElement("a");
-      link.href = `https://doi.org/${a.id}`;
-      link.textContent = a.title ? `${a.title} (${a.id})` : a.id;
-      link.target = "_blank";
-      link.rel = "noreferrer noopener";
-      link.style.color = "#ffe082";
-      link.style.textDecoration = "underline";
-      row.appendChild(link);
-      if (a.noticeUrl) {
-        const notice = document.createElement("a");
-        notice.href = a.noticeUrl.startsWith("http") ? a.noticeUrl : `https://doi.org/${a.noticeUrl}`;
-        notice.textContent = a.label ?? "Notice";
-        notice.target = "_blank";
-        notice.rel = "noreferrer noopener";
-        notice.style.color = "#c5e1a5";
-        notice.style.textDecoration = "underline";
-        row.appendChild(notice);
-      }
-      list.appendChild(row);
+      badge.style.marginLeft = "8px";
+      badge.style.display = "inline-block";
+      anchor.insertAdjacentElement("afterend", badge);
     });
-    return list;
+    logDebug("highlighted orcid alerts", { count: alerts.length });
+  }
+  async function handleOrcidProfile(articleBanner, citationsBanner, orcidId) {
+    if (!orcidId) return false;
+    logDebug("Detected ORCID", orcidId);
+    updateBanner(articleBanner, {
+      bg: COLORS.warning,
+      lines: ["Checking ORCID works..."]
+    });
+    updateBanner(citationsBanner, {
+      bg: COLORS.warning,
+      lines: ["Checking cited works..."]
+    });
+    const worksResult = await checkOrcidWorks(orcidId);
+    const allDois = await fetchOrcidDois(orcidId);
+    const citationsResult = await checkCitedRetractedFromWorks(allDois);
+    const citationsUnknown = Math.max(
+      citationsResult.counts.unknown,
+      citationsResult.failedChecks
+    );
+    highlightOrcidAlerts(worksResult.alerts);
+    const worksHasEoc = worksResult.alerts.some(
+      (a) => a.status === "expression_of_concern"
+    );
+    const citationsHasEoc = citationsResult.alerts.some(
+      (a) => a.status === "expression_of_concern"
+    );
+    updateBanner(articleBanner, {
+      bg: worksHasEoc ? COLORS.danger : worksResult.failedChecks ? COLORS.warning : COLORS.ok,
+      lines: [
+        countsSummary(
+          "Works",
+          worksResult.counts,
+          worksResult.totalFound || worksResult.checked,
+          worksResult.failedChecks
+        )
+      ],
+      alerts: worksResult.alerts
+    });
+    updateBanner(citationsBanner, {
+      bg: citationsHasEoc || citationsResult.alerts.length ? COLORS.danger : citationsUnknown ? COLORS.neutral : COLORS.ok,
+      textColor: citationsUnknown ? COLORS.textDark : void 0,
+      lineColors: citationsUnknown ? [COLORS.textDark, COLORS.ok, COLORS.danger] : void 0,
+      lines: citationsUnknown ? [
+        `Citations: ${citationsResult.totalFound || citationsResult.checked} total`,
+        `retracted ${citationsResult.counts.retracted} \u2022 withdrawn ${citationsResult.counts.withdrawn} \u2022 expression of concern ${citationsResult.counts.expression_of_concern}`,
+        `unknown/failed ${citationsUnknown}`
+      ] : [
+        countsSummary(
+          "Citations",
+          citationsResult.counts,
+          citationsResult.totalFound || citationsResult.checked,
+          citationsResult.failedChecks
+        )
+      ],
+      alerts: citationsResult.alerts
+    });
+    logDebug("ORCID banner updated", {
+      works: worksResult,
+      citations: citationsResult
+    });
+    setWrapperVisibility(true);
+    return true;
+  }
+
+  // src/handlers/article.ts
+  function extractNatureDoiFromPath(loc) {
+    if (!loc.hostname.endsWith("nature.com")) return null;
+    const match = loc.pathname.match(/\/articles\/([^/?#]+)/);
+    if (!match) return null;
+    const suffix = match[1];
+    if (!suffix) return null;
+    return `10.1038/${suffix}`;
+  }
+  function extractPmid(loc) {
+    if (!loc.hostname.endsWith("pubmed.ncbi.nlm.nih.gov")) return null;
+    const meta = document.querySelector('meta[name="citation_pmid"]');
+    const pmid = meta?.getAttribute("content")?.trim() ?? "";
+    return pmid || null;
+  }
+  function collectPubmedReferenceDois() {
+    const roots = [
+      document.querySelector('[data-section="references"]'),
+      document.querySelector("#reference-list"),
+      document.querySelector("#references")
+    ].filter(Boolean);
+    if (!roots.length) return [];
+    const dois = /* @__PURE__ */ new Set();
+    roots.forEach((root) => {
+      const anchors = Array.from(
+        root.querySelectorAll("a[href]")
+      );
+      anchors.forEach((anchor) => {
+        const href = anchor.getAttribute("href") || anchor.href;
+        if (!href) return;
+        try {
+          const url = new URL(href, location.href);
+          let doi = extractDoiFromHref(url.href) || mapPublisherUrlToDoi(url.href);
+          if (!doi) {
+            const text = anchor.textContent?.trim() || "";
+            const match = text.match(/\b10\.[^\s)]+/i);
+            if (match?.[0]) {
+              doi = match[0].replace(/[).,]+$/, "");
+            }
+          }
+          if (doi && doi.startsWith("10.")) {
+            dois.add(doi);
+          }
+        } catch {
+        }
+      });
+    });
+    return Array.from(dois);
+  }
+  async function handleArticlePage(articleBanner, citationsBanner, loc) {
+    const id = extractDoiFromDoiOrg(loc) ?? extractMetaDoi(document) ?? extractNatureDoiFromPath(loc) ?? extractLancetDoiFromPath(loc) ?? extractDoiFromUrlPath(loc.href) ?? extractPmid(loc);
+    if (!id) {
+      logDebug("No DOI/PMID found on this page");
+      updateBanner(articleBanner, {
+        bg: COLORS.ok,
+        lines: ["No identifier found on this page."]
+      });
+      updateBanner(citationsBanner, {
+        bg: COLORS.ok,
+        lines: ["No citations checked."]
+      });
+      return true;
+    }
+    logDebug("Detected identifier", id, "hostname:", loc.hostname);
+    updateBanner(articleBanner, {
+      bg: COLORS.warning,
+      lines: ["Checking article status..."]
+    });
+    updateBanner(citationsBanner, {
+      bg: COLORS.warning,
+      lines: ["Checking citations..."]
+    });
+    const additionalPubmedDois = loc.hostname.endsWith("pubmed.ncbi.nlm.nih.gov") ? collectPubmedReferenceDois() : [];
+    const result = await checkStatus(id);
+    const articleBg = ALERT_STATUSES.has(result.status) ? COLORS.danger : result.status === "unknown" ? COLORS.warning : COLORS.ok;
+    const articleLine = result.status === "retracted" ? "\u26A0\uFE0F This article has been retracted." : result.status === "withdrawn" ? "\u26A0\uFE0F This article has been withdrawn." : result.status === "expression_of_concern" ? "\u26A0\uFE0F This article has an expression of concern." : result.status === "unknown" ? "Article status unknown." : "\u{1F7E1} Article OK; citations pending.";
+    updateBanner(articleBanner, { bg: articleBg, lines: [articleLine] });
+    logDebug("Article banner updated", result);
+    if (!id.startsWith("10.")) return true;
+    const referenceResult = await checkReferences(
+      id,
+      updateReferenceProgress,
+      additionalPubmedDois
+    );
+    if (additionalPubmedDois.length) {
+      logDebug("added PubMed-only DOIs to reference check", {
+        count: additionalPubmedDois.length,
+        sample: additionalPubmedDois.slice(0, 3)
+      });
+    }
+    const referenceUnknown = Math.max(
+      referenceResult.counts.unknown,
+      referenceResult.failedChecks
+    );
+    updateBanner(citationsBanner, {
+      bg: referenceResult.alerts.length ? COLORS.danger : referenceUnknown ? COLORS.neutral : COLORS.ok,
+      textColor: referenceUnknown ? COLORS.textDark : void 0,
+      lineColors: referenceUnknown ? [COLORS.textDark, COLORS.ok, COLORS.danger] : void 0,
+      lines: referenceUnknown ? [
+        `Citations: ${referenceResult.totalFound || referenceResult.checked} total`,
+        `retracted ${referenceResult.counts.retracted} \u2022 withdrawn ${referenceResult.counts.withdrawn} \u2022 expression of concern ${referenceResult.counts.expression_of_concern}`,
+        `unknown/failed ${referenceUnknown}`
+      ] : [
+        countsSummary(
+          "Citations",
+          referenceResult.counts,
+          referenceResult.totalFound || referenceResult.checked,
+          referenceResult.failedChecks
+        )
+      ],
+      alerts: referenceResult.alerts
+    });
+    logDebug("Reference banner updated", referenceResult);
+    const articleOkNoAlerts = result.status === "ok" && referenceResult.alerts.length === 0 && referenceResult.failedChecks === 0;
+    const articleHasCitationAlerts = referenceResult.alerts.length > 0 || referenceResult.failedChecks > 0;
+    if (articleOkNoAlerts) {
+      updateBanner(articleBanner, {
+        bg: COLORS.ok,
+        lines: ["\u2705 Article OK and citations clear."]
+      });
+    } else if (result.status === "ok" && articleHasCitationAlerts) {
+      updateBanner(articleBanner, {
+        bg: COLORS.danger,
+        lines: ["\u26A0\uFE0F Article cites retracted/flagged or incomplete citations check."]
+      });
+    }
+    return true;
   }
 
   // src/news.ts
@@ -887,7 +1213,7 @@
     }
     setWrapperVisibility(true);
     updateBanner(citations, {
-      bg: "#fbc02d",
+      bg: COLORS.warning,
       lines: ["Checking linked articles..."]
     });
     const results = [];
@@ -954,7 +1280,7 @@
       )}&body=${encodeURIComponent(body)}`;
     }
     updateBanner(citations, {
-      bg: allAlerts.length ? "#8b0000" : unknown || referenceFailedChecks ? "#fbc02d" : "#1b5e20",
+      bg: allAlerts.length ? COLORS.danger : unknown || referenceFailedChecks ? COLORS.warning : COLORS.ok,
       lines: [
         countsSummary(
           "Linked articles",
@@ -976,7 +1302,7 @@
       button.textContent = "Email editor";
       button.style.border = "none";
       button.style.cursor = "pointer";
-      button.style.background = "#ffe082";
+      button.style.background = COLORS.link;
       button.style.color = "#4e342e";
       button.style.fontWeight = "bold";
       button.style.padding = "6px 10px";
@@ -993,333 +1319,60 @@
     return true;
   }
 
-  // src/google-scholar.ts
-  function isScholarProfile(loc) {
-    const isScholarHost = loc.hostname.includes("scholar.google.");
-    const isProfilePath = loc.pathname.includes("/citations");
-    if (!isScholarHost || !isProfilePath) return false;
-    const params = new URLSearchParams(loc.search);
-    return params.has("user");
-  }
-  function getScholarName() {
-    const nameEl = document.querySelector("#gsc_prf_in");
-    const text = nameEl?.textContent?.trim();
-    return text || null;
-  }
-  function findOrcidUrl(loc) {
-    const anchors = Array.from(
-      document.querySelectorAll('a[href*="orcid.org"]')
-    );
-    for (const anchor of anchors) {
-      const href = anchor.getAttribute("href") || anchor.href;
-      if (!href) continue;
-      try {
-        const url = new URL(href, loc.href);
-        const match = url.pathname.match(
-          /(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/
-        );
-        if (match?.[1]) {
-          return `https://orcid.org/${match[1]}`;
-        }
-      } catch {
-      }
-    }
-    return null;
-  }
-  function handleGoogleScholarProfile(articleBanner, citationsBanner, loc) {
-    if (!isScholarProfile(loc)) return false;
-    const orcidUrl = findOrcidUrl(loc);
-    if (orcidUrl) {
-      setWrapperVisibility(true);
-      citationsBanner.style.display = "flex";
-      updateBanner(articleBanner, {
-        bg: "#1b5e20",
-        lines: ["View this author on ORCID to run retraction checks."],
-        actions: [
-          {
-            href: orcidUrl,
-            label: "View on ORCID",
-            title: "Open ORCID profile to run retraction checks"
-          }
-        ]
-      });
-      updateBanner(citationsBanner, {
-        bg: "#1b5e20",
-        lines: ["Checks run on the ORCID profile."]
-      });
-    } else {
-      const name = getScholarName();
-      if (!name) {
-        setWrapperVisibility(false);
-        return true;
-      }
-      const searchUrl = `https://orcid.org/orcid-search/search?searchQuery=${encodeURIComponent(
-        name
-      )}`;
-      setWrapperVisibility(true);
-      citationsBanner.style.display = "none";
-      updateBanner(articleBanner, {
-        bg: "#fbc02d",
-        lines: ["Find this author on ORCID to run retraction checks."],
-        actions: [
-          {
-            href: searchUrl,
-            label: "Search on ORCID",
-            title: "Open ORCID search for this author"
-          }
-        ]
-      });
-    }
-    logDebug("Google Scholar profile handled", { hasOrcid: Boolean(orcidUrl) });
-    return true;
-  }
-
-  // src/content-script.ts
-  function extractNatureDoiFromPath() {
-    if (!location.hostname.endsWith("nature.com")) return null;
-    const match = location.pathname.match(/\/articles\/([^/?#]+)/);
-    if (!match) return null;
-    const suffix = match[1];
-    if (!suffix) return null;
-    return `10.1038/${suffix}`;
-  }
-  function extractOrcidId() {
-    if (!location.hostname.endsWith("orcid.org")) return null;
-    const match = location.pathname.match(
+  // src/router.ts
+  function extractOrcidId(loc) {
+    if (!loc.hostname.endsWith("orcid.org")) return null;
+    const match = loc.pathname.match(
       /\/(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/i
     );
     return match ? match[1] : null;
   }
-  function extractPmid() {
-    if (!location.hostname.endsWith("pubmed.ncbi.nlm.nih.gov")) return null;
-    const meta = document.querySelector('meta[name="citation_pmid"]');
-    const pmid = meta?.getAttribute("content")?.trim() ?? "";
-    return pmid || null;
-  }
-  function collectPubmedReferenceDois() {
-    const roots = [
-      document.querySelector('[data-section="references"]'),
-      document.querySelector("#reference-list"),
-      document.querySelector("#references")
-    ].filter(Boolean);
-    if (!roots.length) return [];
-    const dois = /* @__PURE__ */ new Set();
-    roots.forEach((root) => {
-      const anchors = Array.from(root.querySelectorAll("a[href]"));
-      anchors.forEach((anchor) => {
-        const href = anchor.getAttribute("href") || anchor.href;
-        if (!href) return;
-        try {
-          const url = new URL(href, location.href);
-          let doi = extractDoiFromHref(url.href) || mapPublisherUrlToDoi(url.href);
-          if (!doi) {
-            const text = anchor.textContent?.trim() || "";
-            const match = text.match(/\b10\.[^\s)]+/i);
-            if (match?.[0]) {
-              doi = match[0].replace(/[).,]+$/, "");
-            }
-          }
-          if (doi && doi.startsWith("10.")) {
-            dois.add(doi);
-          }
-        } catch {
-        }
-      });
-    });
-    return Array.from(dois);
-  }
-  function highlightOrcidAlerts(alerts) {
-    if (!alerts.length) return;
-    const alertMap = new Map(
-      alerts.map((a) => [a.id.toLowerCase(), a])
+  async function routePage(ctx) {
+    const scholarHandled = await handleScholarProfile(
+      ctx.article,
+      ctx.citations,
+      ctx.location
     );
-    const anchors = Array.from(
-      document.querySelectorAll("a[href]")
+    if (scholarHandled) return true;
+    const newsHandled = await handleNewsPage(
+      ctx.location.hostname,
+      ctx.citations
     );
-    anchors.forEach((anchor) => {
-      const href = anchor.getAttribute("href") || anchor.href || "";
-      const text = anchor.textContent || "";
-      const doi = extractDoiFromHref(href) || extractDoiFromHref(text);
-      if (!doi) return;
-      const alert = alertMap.get(doi.toLowerCase());
-      if (!alert) return;
-      const target = anchor.closest("[data-work-id]") || anchor.closest("li") || anchor;
-      if (!target || target.dataset.retractionAlertMarked) return;
-      target.dataset.retractionAlertMarked = "1";
-      target.style.borderLeft = "4px solid #b71c1c";
-      target.style.backgroundColor = "#ffebee";
-      target.style.paddingLeft = "8px";
-      const badge = document.createElement("span");
-      badge.textContent = "Retracted";
-      badge.style.background = "#b71c1c";
-      badge.style.color = "#fff";
-      badge.style.fontSize = "12px";
-      badge.style.fontWeight = "bold";
-      badge.style.padding = "2px 6px";
-      badge.style.borderRadius = "4px";
-      badge.style.marginLeft = "8px";
-      badge.style.display = "inline-block";
-      anchor.insertAdjacentElement("afterend", badge);
-    });
-    logDebug("highlighted orcid alerts", { count: alerts.length });
-  }
-  async function run() {
-    const { article, citations } = ensureBanners();
-    const isOrcidHost = location.hostname.endsWith("orcid.org");
-    const handledScholar = handleGoogleScholarProfile(
-      article,
-      citations,
-      window.location
-    );
-    if (handledScholar) return;
-    const handledNews = await handleNewsPage(location.hostname, citations);
-    if (handledNews) return;
-    const orcidId = extractOrcidId();
-    if (isOrcidHost && !orcidId) {
+    if (newsHandled) return true;
+    const orcidId = extractOrcidId(ctx.location);
+    if (ctx.location.hostname.endsWith("orcid.org") && !orcidId) {
       setWrapperVisibility(false);
       logDebug("Non-profile ORCID page; skipping banners.");
-      return;
+      return true;
     }
     if (orcidId) {
-      logDebug("Detected ORCID", orcidId);
-      updateBanner(article, {
-        bg: "#fbc02d",
-        lines: ["Checking ORCID works..."]
-      });
-      updateBanner(citations, {
-        bg: "#fbc02d",
-        lines: ["Checking cited works..."]
-      });
-      const worksResult = await checkOrcidWorks(orcidId);
-      const allDois = await fetchOrcidDois(orcidId);
-      const citationsResult = await checkCitedRetractedFromWorks(allDois);
-      const citationsUnknown = Math.max(
-        citationsResult.counts.unknown,
-        citationsResult.failedChecks
+      const orcidHandled = await handleOrcidProfile(
+        ctx.article,
+        ctx.citations,
+        orcidId
       );
-      highlightOrcidAlerts(worksResult.alerts);
-      const worksHasEoc = worksResult.alerts.some(
-        (a) => a.status === "expression_of_concern"
-      );
-      const citationsHasEoc = citationsResult.alerts.some(
-        (a) => a.status === "expression_of_concern"
-      );
-      updateBanner(article, {
-        bg: worksHasEoc ? "#8b0000" : worksResult.failedChecks ? "#fbc02d" : "#1b5e20",
-        lines: [
-          countsSummary(
-            "Works",
-            worksResult.counts,
-            worksResult.totalFound || worksResult.checked,
-            worksResult.failedChecks
-          )
-        ],
-        alerts: worksResult.alerts
-      });
-      updateBanner(citations, {
-        bg: citationsHasEoc || citationsResult.alerts.length ? "#8b0000" : citationsUnknown ? "#ffffff" : "#1b5e20",
-        textColor: citationsUnknown ? "#000000" : void 0,
-        lineColors: citationsUnknown ? [
-          "#000000",
-          "#1b5e20",
-          "#8b0000"
-        ] : void 0,
-        lines: citationsUnknown ? [
-          `Citations: ${citationsResult.totalFound || citationsResult.checked} total`,
-          `retracted ${citationsResult.counts.retracted} \u2022 withdrawn ${citationsResult.counts.withdrawn} \u2022 expression of concern ${citationsResult.counts.expression_of_concern}`,
-          `unknown/failed ${citationsUnknown}`
-        ] : [
-          countsSummary(
-            "Citations",
-            citationsResult.counts,
-            citationsResult.totalFound || citationsResult.checked,
-            citationsResult.failedChecks
-          )
-        ],
-        alerts: citationsResult.alerts
-      });
-      logDebug("ORCID banner updated", {
-        works: worksResult,
-        citations: citationsResult
-      });
-      return;
+      if (orcidHandled) return true;
     }
-    const id = extractDoiFromDoiOrg(window.location) ?? extractMetaDoi(document) ?? extractNatureDoiFromPath() ?? extractLancetDoiFromPath(window.location) ?? extractDoiFromUrlPath(window.location.href) ?? extractPmid();
-    if (!id) {
-      logDebug("No DOI/PMID found on this page");
-      updateBanner(article, {
-        bg: "#1b5e20",
-        lines: ["No identifier found on this page."]
-      });
-      updateBanner(citations, {
-        bg: "#1b5e20",
-        lines: ["No citations checked."]
-      });
-      return;
-    }
-    logDebug("Detected identifier", id, "hostname:", location.hostname);
-    updateBanner(article, {
-      bg: "#fbc02d",
-      lines: ["Checking article status..."]
+    const articleHandled = await handleArticlePage(
+      ctx.article,
+      ctx.citations,
+      ctx.location
+    );
+    if (articleHandled) return true;
+    return false;
+  }
+
+  // src/content-script.ts
+  async function run() {
+    const { article, citations } = ensureBanners();
+    const handled = await routePage({
+      article,
+      citations,
+      location: window.location
     });
-    updateBanner(citations, {
-      bg: "#fbc02d",
-      lines: ["Checking citations..."]
-    });
-    const additionalPubmedDois = location.hostname.endsWith("pubmed.ncbi.nlm.nih.gov") ? collectPubmedReferenceDois() : [];
-    const result = await checkStatus(id);
-    const articleBg = ALERT_STATUSES.has(result.status) ? "#8b0000" : result.status === "unknown" ? "#fbc02d" : "#1b5e20";
-    const articleLine = result.status === "retracted" ? "\u26A0\uFE0F This article has been retracted." : result.status === "withdrawn" ? "\u26A0\uFE0F This article has been withdrawn." : result.status === "expression_of_concern" ? "\u26A0\uFE0F This article has an expression of concern." : result.status === "unknown" ? "Article status unknown." : "\u{1F7E1} Article OK; citations pending.";
-    updateBanner(article, { bg: articleBg, lines: [articleLine] });
-    logDebug("Article banner updated", result);
-    if (id.startsWith("10.")) {
-      const referenceResult = await checkReferences(
-        id,
-        updateReferenceProgress,
-        additionalPubmedDois
-      );
-      if (additionalPubmedDois.length) {
-        logDebug("added PubMed-only DOIs to reference check", {
-          count: additionalPubmedDois.length,
-          sample: additionalPubmedDois.slice(0, 3)
-        });
-      }
-      const referenceUnknown = Math.max(
-        referenceResult.counts.unknown,
-        referenceResult.failedChecks
-      );
-      updateBanner(citations, {
-        bg: referenceResult.alerts.length ? "#8b0000" : referenceUnknown ? "#ffffff" : "#1b5e20",
-        textColor: referenceUnknown ? "#000000" : void 0,
-        lineColors: referenceUnknown ? ["#000000", "#1b5e20", "#8b0000"] : void 0,
-        lines: referenceUnknown ? [
-          `Citations: ${referenceResult.totalFound || referenceResult.checked} total`,
-          `retracted ${referenceResult.counts.retracted} \u2022 withdrawn ${referenceResult.counts.withdrawn} \u2022 expression of concern ${referenceResult.counts.expression_of_concern}`,
-          `unknown/failed ${referenceUnknown}`
-        ] : [
-          countsSummary(
-            "Citations",
-            referenceResult.counts,
-            referenceResult.totalFound || referenceResult.checked,
-            referenceResult.failedChecks
-          )
-        ],
-        alerts: referenceResult.alerts
-      });
-      logDebug("Reference banner updated", referenceResult);
-      const articleOkNoAlerts = result.status === "ok" && referenceResult.alerts.length === 0 && referenceResult.failedChecks === 0;
-      const articleHasCitationAlerts = referenceResult.alerts.length > 0 || referenceResult.failedChecks > 0;
-      if (articleOkNoAlerts) {
-        updateBanner(article, {
-          bg: "#1b5e20",
-          lines: ["\u2705 Article OK and citations clear."]
-        });
-      } else if (result.status === "ok" && articleHasCitationAlerts) {
-        updateBanner(article, {
-          bg: "#8b0000",
-          lines: ["\u26A0\uFE0F Article cites retracted/flagged or incomplete citations check."]
-        });
-      }
+    if (!handled) {
+      setWrapperVisibility(false);
+      logDebug("No handler matched this page");
     }
   }
   if (document.readyState === "loading") {

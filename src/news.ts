@@ -10,6 +10,7 @@ import {
   setWrapperVisibility,
   updateReferenceProgress,
 } from "./ui/banners";
+import { COLORS } from "./ui/colors";
 import { checkStatus, checkReferences } from "./crossref";
 import { extractDoiFromHref, mapPublisherUrlToDoi } from "./doi";
 import { logDebug } from "./log";
@@ -110,7 +111,7 @@ export async function handleNewsPage(
 
   setWrapperVisibility(true);
   updateBanner(citations, {
-    bg: "#fbc02d",
+    bg: COLORS.warning,
     lines: ["Checking linked articles..."],
   });
 
@@ -188,10 +189,10 @@ export async function handleNewsPage(
 
   updateBanner(citations, {
     bg: allAlerts.length
-      ? "#8b0000"
+      ? COLORS.danger
       : unknown || referenceFailedChecks
-      ? "#fbc02d"
-      : "#1b5e20",
+      ? COLORS.warning
+      : COLORS.ok,
     lines: [
       countsSummary(
         "Linked articles",
@@ -217,7 +218,7 @@ export async function handleNewsPage(
     button.textContent = "Email editor";
     button.style.border = "none";
     button.style.cursor = "pointer";
-    button.style.background = "#ffe082";
+    button.style.background = COLORS.link;
     button.style.color = "#4e342e";
     button.style.fontWeight = "bold";
     button.style.padding = "6px 10px";

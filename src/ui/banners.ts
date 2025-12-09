@@ -6,6 +6,7 @@ import { clearCaches } from "../cache";
 export type AlertItem = AlertEntry;
 export type BannerAction = { label: string; href: string; title?: string };
 type BannerLineColor = string | undefined;
+import { COLORS } from "./colors";
 
 const STATE = {
   basePadding: 0,
@@ -40,7 +41,7 @@ export function injectCacheClearButton(container: HTMLElement): void {
   btn.textContent = "Clear cache";
   btn.style.border = "none";
   btn.style.cursor = "pointer";
-  btn.style.background = "#ffe082";
+  btn.style.background = COLORS.link;
   btn.style.color = "#4e342e";
   btn.style.fontWeight = "bold";
   btn.style.padding = "6px 10px";
@@ -118,7 +119,7 @@ export function ensureBanners(): {
     div.style.fontFamily = "Arial, sans-serif";
     div.style.fontSize = "14px";
     div.style.fontWeight = "bold";
-    div.style.color = "#ffffff";
+    div.style.color = COLORS.textLight;
     div.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
     div.style.borderRadius = "0";
     return div;
@@ -154,7 +155,7 @@ export function ensureReferenceProgressBanner(): HTMLDivElement {
   container.style.alignItems = "center";
   container.style.gap = "6px";
   container.style.padding = "10px 14px";
-  container.style.backgroundColor = "#fbc02d";
+  container.style.backgroundColor = COLORS.warning;
   container.style.color = "#000";
   container.style.fontFamily = "Arial, sans-serif";
   container.style.fontSize = "13px";
@@ -170,7 +171,7 @@ export function ensureReferenceProgressBanner(): HTMLDivElement {
   barOuter.style.width = "320px";
   barOuter.style.maxWidth = "90vw";
   barOuter.style.height = "8px";
-  barOuter.style.backgroundColor = "#ffe082";
+  barOuter.style.backgroundColor = COLORS.link;
   barOuter.style.borderRadius = "999px";
   barOuter.style.overflow = "hidden";
 
@@ -223,7 +224,7 @@ export function updateBanner(
   }
 ): void {
   banner.style.backgroundColor = options.bg;
-  banner.style.color = options.textColor ?? "#ffffff";
+  banner.style.color = options.textColor ?? COLORS.textLight;
   banner.style.display = "flex";
   banner.innerHTML = "";
   options.lines.forEach((line, idx) => {
@@ -251,7 +252,7 @@ export function updateBanner(
       if (action.title) link.title = action.title;
       link.target = "_blank";
       link.rel = "noreferrer noopener";
-      link.style.background = "#ffe082";
+      link.style.background = COLORS.link;
       link.style.color = "#4e342e";
       link.style.padding = "6px 10px";
       link.style.borderRadius = "6px";
@@ -341,7 +342,7 @@ function buildAlertList(alerts: AlertItem[]): HTMLElement {
         ? "#2e7d32"
         : a.status === "expression_of_concern"
         ? "#ef6c00"
-        : "#8b0000";
+        : COLORS.danger;
     badge.style.color = "#fff";
     badge.style.fontWeight = "bold";
     row.appendChild(badge);
@@ -351,7 +352,7 @@ function buildAlertList(alerts: AlertItem[]): HTMLElement {
     link.textContent = a.title ? `${a.title} (${a.id})` : a.id;
     link.target = "_blank";
     link.rel = "noreferrer noopener";
-    link.style.color = "#ffe082";
+    link.style.color = COLORS.link;
     link.style.textDecoration = "underline";
     row.appendChild(link);
 
