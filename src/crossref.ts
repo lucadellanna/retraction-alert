@@ -6,7 +6,7 @@ import {
 import { getCache, setCache } from "./cache";
 import { extractDoiFromHref } from "./doi";
 import { logDebug } from "./log";
-import { ArticleStatus, StatusResult, ReferenceCheckResult } from "./types";
+import { ArticleStatus, StatusResult, ReferenceCheckResult, AlertEntry } from "./types";
 
 async function fetchJsonViaBackground(
   url: string
@@ -18,26 +18,40 @@ async function fetchJsonViaBackground(
 
   if (canMessage) {
     try {
+      logDebug("crossref fetch via background", { url });
       const response = await chrome.runtime.sendMessage({
         type: "fetchJson",
         url,
       });
       if (response?.ok && response.data) {
+        logDebug("crossref fetch via background success", {
+          url,
+          status: response.status,
+        });
         return response.data as Record<string, unknown>;
       }
-      logDebug("background fetch failed", { url, response });
+      logDebug("crossref fetch via background failed", {
+        url,
+        status: response?.status,
+        error: response?.error,
+      });
     } catch (error) {
-      logDebug("background fetch error", { url, error });
+      logDebug("crossref fetch via background error", { url, error });
     }
   }
 
   try {
+    logDebug("crossref fetch direct", { url });
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      logDebug("crossref fetch direct failed", { url, status: res.status });
+      return null;
+    }
+    logDebug("crossref fetch direct success", { url, status: res.status });
     const data = await res.json();
     return data as Record<string, unknown>;
   } catch (error) {
-    logDebug("direct fetch error", { url, error });
+    logDebug("crossref fetch direct error", { url, error });
     return null;
   }
 }
@@ -75,15 +89,15 @@ export async function fetchCrossrefMessage(
     const url = `https://api.crossref.org/v1/works/${safeId}`;
     const data = await fetchJsonViaBackground(url);
     if (!data) return null;
-    const message = data?.message;
-    if (message) {
-      void setCache(`crossref:${id}`, message);
-    }
+    const message =
+      (data as { message?: Record<string, unknown> }).message ?? null;
+    if (!message) return null;
+    void setCache(`crossref:${id}`, message);
     logDebug("parsed Crossref payload", {
-      updateTo: message?.["update-to"],
-      assertion: message?.assertion,
+      updateTo: (message as { "update-to"?: unknown })["update-to"],
+      assertion: (message as { assertion?: unknown })["assertion"],
     });
-    return message ?? null;
+    return message;
   } catch (error) {
     logDebug("fetchCrossrefMessage error", error);
     return null;
@@ -91,14 +105,48 @@ export async function fetchCrossrefMessage(
 }
 
 function detectAlertFromMessage(message: Record<string, unknown>): StatusResult {
-  const assertions = (message.assertion as unknown[]) ?? [];
-  const updateTo = (message["update-to"] as unknown[]) ?? [];
+  const relation = (message as { relation?: unknown }).relation as
+    | Record<string, unknown>
+    | undefined;
+  if (relation && typeof relation === "object") {
+    for (const [key, value] of Object.entries(relation)) {
+      const normalizedKey = key.toLowerCase();
+      let status: ArticleStatus | null = null;
+      if (normalizedKey.includes("retract")) status = "retracted";
+      else if (normalizedKey.includes("withdraw")) status = "withdrawn";
+      else if (normalizedKey.includes("expression")) status = "expression_of_concern";
+
+      if (status) {
+        const entries = Array.isArray(value) ? value : [];
+        const doiEntry = entries.find(
+          (entry) =>
+            entry &&
+            typeof entry === "object" &&
+            typeof (entry as { "id-type"?: string })["id-type"] === "string" &&
+            (entry as { "id-type": string })["id-type"].toLowerCase() === "doi"
+        ) as { id?: string } | undefined;
+        const idVal = doiEntry?.id;
+        return {
+          status,
+          label: key,
+          noticeUrl: typeof idVal === "string" ? idVal : undefined,
+        };
+      }
+    }
+  }
+
+  const assertions =
+    ((message as { assertion?: unknown }).assertion as unknown[]) ?? [];
+  const updateTo =
+    ((message as { "update-to"?: unknown })["update-to"] as unknown[]) ?? [];
   const texts: string[] = [];
   if (Array.isArray(assertions)) {
     for (const a of assertions) {
       if (a && typeof a === "object") {
         const label = (a as { label?: string }).label;
+        const value = (a as { value?: string }).value;
         if (typeof label === "string") texts.push(label);
+        if (typeof value === "string") texts.push(value);
       }
     }
   }
@@ -192,6 +240,7 @@ export async function checkStatus(id: string): Promise<StatusResult> {
     return cached;
   }
 
+  logDebug("checkStatus fetch start", { id });
   const message = await fetchCrossrefMessage(id);
   if (!message) return { status: "unknown" };
 

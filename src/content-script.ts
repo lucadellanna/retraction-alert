@@ -7,6 +7,7 @@ import {
   extractDoiFromDoiOrg,
   extractMetaDoi,
   mapPublisherUrlToDoi,
+  extractDoiFromHref,
 } from "./doi";
 import { checkStatus, checkReferences } from "./crossref";
 import {
@@ -242,6 +243,12 @@ async function run(): Promise<void> {
       updateReferenceProgress,
       additionalPubmedDois
     );
+    if (additionalPubmedDois.length) {
+      logDebug("added PubMed-only DOIs to reference check", {
+        count: additionalPubmedDois.length,
+        sample: additionalPubmedDois.slice(0, 3),
+      });
+    }
     const referenceUnknown = Math.max(
       referenceResult.counts.unknown,
       referenceResult.failedChecks

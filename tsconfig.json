@@ -5,7 +5,7 @@
     "moduleResolution": "node",
     "strict": true,
     "noEmit": true,
-    "types": ["chrome"]
+    "types": ["chrome", "node"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "tests/**/*"]
 }

@@ -5,9 +5,11 @@
   "scripts": {
     "build": "node build.mjs",
     "version": "node scripts/sync-version.mjs && git add public/manifest.json",
-    "bump": "node scripts/bump.mjs"
+    "bump": "node scripts/bump.mjs",
+    "test:doi": "node scripts/run-doi-test.mjs"
   },
   "devDependencies": {
+    "@types/node": "^22.13.1",
     "@types/chrome": "^0.1.32",
     "esbuild": "^0.21.5",
     "typescript": "^5.3.2"

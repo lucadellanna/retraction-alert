@@ -132,25 +132,39 @@
     const canMessage = typeof chrome !== "undefined" && !!chrome.runtime?.id && typeof chrome.runtime.sendMessage === "function";
     if (canMessage) {
       try {
+        logDebug("crossref fetch via background", { url });
         const response = await chrome.runtime.sendMessage({
           type: "fetchJson",
           url
         });
         if (response?.ok && response.data) {
+          logDebug("crossref fetch via background success", {
+            url,
+            status: response.status
+          });
           return response.data;
         }
-        logDebug("background fetch failed", { url, response });
+        logDebug("crossref fetch via background failed", {
+          url,
+          status: response?.status,
+          error: response?.error
+        });
       } catch (error) {
-        logDebug("background fetch error", { url, error });
+        logDebug("crossref fetch via background error", { url, error });
       }
     }
     try {
+      logDebug("crossref fetch direct", { url });
       const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        logDebug("crossref fetch direct failed", { url, status: res.status });
+        return null;
+      }
+      logDebug("crossref fetch direct success", { url, status: res.status });
       const data = await res.json();
       return data;
     } catch (error) {
-      logDebug("direct fetch error", { url, error });
+      logDebug("crossref fetch direct error", { url, error });
       return null;
     }
   }
@@ -193,6 +207,28 @@
     }
   }
   function detectAlertFromMessage(message) {
+    const relation = message.relation;
+    if (relation && typeof relation === "object") {
+      for (const [key, value] of Object.entries(relation)) {
+        const normalizedKey = key.toLowerCase();
+        let status = null;
+        if (normalizedKey.includes("retract")) status = "retracted";
+        else if (normalizedKey.includes("withdraw")) status = "withdrawn";
+        else if (normalizedKey.includes("expression")) status = "expression_of_concern";
+        if (status) {
+          const entries = Array.isArray(value) ? value : [];
+          const doiEntry = entries.find(
+            (entry) => entry && typeof entry === "object" && typeof entry["id-type"] === "string" && entry["id-type"].toLowerCase() === "doi"
+          );
+          const idVal = doiEntry?.id;
+          return {
+            status,
+            label: key,
+            noticeUrl: typeof idVal === "string" ? idVal : void 0
+          };
+        }
+      }
+    }
     const assertions = message.assertion ?? [];
     const updateTo = message["update-to"] ?? [];
     const texts = [];
@@ -200,7 +236,9 @@
       for (const a of assertions) {
         if (a && typeof a === "object") {
           const label = a.label;
+          const value = a.value;
           if (typeof label === "string") texts.push(label);
+          if (typeof value === "string") texts.push(value);
         }
       }
     }
@@ -236,6 +274,7 @@
       logDebug("using cached status", id);
       return cached;
     }
+    logDebug("checkStatus fetch start", { id });
     const message = await fetchCrossrefMessage(id);
     if (!message) return { status: "unknown" };
     try {
@@ -1204,6 +1243,12 @@
         updateReferenceProgress,
         additionalPubmedDois
       );
+      if (additionalPubmedDois.length) {
+        logDebug("added PubMed-only DOIs to reference check", {
+          count: additionalPubmedDois.length,
+          sample: additionalPubmedDois.slice(0, 3)
+        });
+      }
       const referenceUnknown = Math.max(
         referenceResult.counts.unknown,
         referenceResult.failedChecks
