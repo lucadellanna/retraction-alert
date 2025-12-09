@@ -6,6 +6,7 @@ import {
   extractDoiFromUrlPath,
   extractDoiFromDoiOrg,
   extractMetaDoi,
+  mapPublisherUrlToDoi,
 } from "./doi";
 import { checkStatus, checkReferences } from "./crossref";
 import {
@@ -46,6 +47,43 @@ function extractPmid(): string | null {
   const meta = document.querySelector('meta[name="citation_pmid"]');
   const pmid = meta?.getAttribute("content")?.trim() ?? "";
   return pmid || null;
+}
+
+function collectPubmedReferenceDois(): string[] {
+  const roots = [
+    document.querySelector('[data-section="references"]'),
+    document.querySelector("#reference-list"),
+    document.querySelector("#references"),
+  ].filter(Boolean) as HTMLElement[];
+  if (!roots.length) return [];
+
+  const dois = new Set<string>();
+  roots.forEach((root) => {
+    const anchors = Array.from(root.querySelectorAll("a[href]")) as HTMLAnchorElement[];
+    anchors.forEach((anchor) => {
+      const href = anchor.getAttribute("href") || anchor.href;
+      if (!href) return;
+      try {
+        const url = new URL(href, location.href);
+        let doi =
+          extractDoiFromHref(url.href) ||
+          mapPublisherUrlToDoi(url.href);
+        if (!doi) {
+          const text = anchor.textContent?.trim() || "";
+          const match = text.match(/\b10\.[^\s)]+/i);
+          if (match?.[0]) {
+            doi = match[0].replace(/[).,]+$/, "");
+          }
+        }
+        if (doi && doi.startsWith("10.")) {
+          dois.add(doi);
+        }
+      } catch {
+        // ignore malformed URLs
+      }
+    });
+  });
+  return Array.from(dois);
 }
 
 async function run(): Promise<void> {
@@ -174,6 +212,11 @@ async function run(): Promise<void> {
     lines: ["Checking citations..."],
   });
 
+  const additionalPubmedDois =
+    location.hostname.endsWith("pubmed.ncbi.nlm.nih.gov")
+      ? collectPubmedReferenceDois()
+      : [];
+
   const result = await checkStatus(id);
   const articleBg = ALERT_STATUSES.has(result.status)
     ? "#8b0000"
@@ -194,7 +237,11 @@ async function run(): Promise<void> {
   logDebug("Article banner updated", result);
 
   if (id.startsWith("10.")) {
-    const referenceResult = await checkReferences(id, updateReferenceProgress);
+    const referenceResult = await checkReferences(
+      id,
+      updateReferenceProgress,
+      additionalPubmedDois
+    );
     const referenceUnknown = Math.max(
       referenceResult.counts.unknown,
       referenceResult.failedChecks

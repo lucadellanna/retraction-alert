@@ -47,7 +47,7 @@
   }
 
   // src/doi.ts
-  function extractDoiFromHref(href) {
+  function extractDoiFromHref2(href) {
     try {
       const decoded = decodeURIComponent(href);
       const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
@@ -250,9 +250,20 @@
       return { status: "unknown" };
     }
   }
-  async function checkReferences(doi, onProgress) {
+  async function checkReferences(doi, onProgress, additionalDois = []) {
     const message = await fetchCrossrefMessage(doi);
-    if (!message)
+    const references = message?.reference ?? [];
+    const refList = Array.isArray(references) ? references : [];
+    const crossrefDois = refList.map((ref) => {
+      if (!ref || typeof ref !== "object") return null;
+      const doiValue = ref.DOI;
+      if (typeof doiValue === "string" && doiValue.startsWith("10."))
+        return doiValue;
+      return null;
+    }).filter((val) => Boolean(val));
+    const extraDois = (additionalDois || []).filter((d) => d.startsWith("10."));
+    const combinedDois = Array.from(/* @__PURE__ */ new Set([...crossrefDois, ...extraDois]));
+    if (!message && combinedDois.length === 0) {
       return {
         alerts: [],
         checked: 0,
@@ -266,19 +277,10 @@
           unknown: 1
         }
       };
-    const references = message.reference ?? [];
-    const refList = Array.isArray(references) ? references : [];
-    const dois = refList.map((ref) => {
-      if (!ref || typeof ref !== "object") return null;
-      const doiValue = ref.DOI;
-      if (typeof doiValue === "string" && doiValue.startsWith("10."))
-        return doiValue;
-      return null;
-    }).filter((val) => Boolean(val));
-    const uniqueDois = Array.from(new Set(dois));
+    }
     logDebug("checking references", {
-      totalFound: dois.length,
-      checking: uniqueDois.length
+      totalFound: crossrefDois.length + extraDois.length,
+      checking: combinedDois.length
     });
     const results = [];
     let checked = 0;
@@ -292,9 +294,9 @@
       unknown: 0
     };
     const worker = async () => {
-      while (index < uniqueDois.length) {
+      while (index < combinedDois.length) {
         const current = index++;
-        const refDoi = uniqueDois[current];
+        const refDoi = combinedDois[current];
         const status = await checkStatus(refDoi);
         checked += 1;
         if (status.status === "unknown") {
@@ -312,19 +314,19 @@
         } else {
           counts.ok += 1;
         }
-        onProgress(checked, uniqueDois.length);
+        onProgress(checked, combinedDois.length);
       }
     };
     const concurrency = Math.min(
       MAX_REFERENCE_CONCURRENCY,
-      uniqueDois.length || 1
+      combinedDois.length || 1
     );
     const workers = Array.from({ length: concurrency }, () => worker());
     await Promise.all(workers);
     return {
       alerts: results,
       checked,
-      totalFound: dois.length,
+      totalFound: crossrefDois.length + extraDois.length,
       failedChecks,
       counts
     };
@@ -828,12 +830,12 @@
       try {
         const url = new URL(a.href, location.href);
         if (SCIENCE_HOSTS.some((h) => url.hostname.includes(h))) {
-          let doi = extractDoiFromHref(url.href) || mapPublisherUrlToDoi(url.href);
+          let doi = extractDoiFromHref2(url.href) || mapPublisherUrlToDoi(url.href);
           if (!doi) {
             const redirect = url.searchParams.get("redirect_uri");
             if (redirect) {
               const decoded = decodeURIComponent(redirect);
-              doi = extractDoiFromHref(decoded) || mapPublisherUrlToDoi(decoded);
+              doi = extractDoiFromHref2(decoded) || mapPublisherUrlToDoi(decoded);
             }
           }
           if (doi) candidateDois.add(doi);
@@ -1056,6 +1058,38 @@
     const pmid = meta?.getAttribute("content")?.trim() ?? "";
     return pmid || null;
   }
+  function collectPubmedReferenceDois() {
+    const roots = [
+      document.querySelector('[data-section="references"]'),
+      document.querySelector("#reference-list"),
+      document.querySelector("#references")
+    ].filter(Boolean);
+    if (!roots.length) return [];
+    const dois = /* @__PURE__ */ new Set();
+    roots.forEach((root) => {
+      const anchors = Array.from(root.querySelectorAll("a[href]"));
+      anchors.forEach((anchor) => {
+        const href = anchor.getAttribute("href") || anchor.href;
+        if (!href) return;
+        try {
+          const url = new URL(href, location.href);
+          let doi = extractDoiFromHref(url.href) || mapPublisherUrlToDoi(url.href);
+          if (!doi) {
+            const text = anchor.textContent?.trim() || "";
+            const match = text.match(/\b10\.[^\s)]+/i);
+            if (match?.[0]) {
+              doi = match[0].replace(/[).,]+$/, "");
+            }
+          }
+          if (doi && doi.startsWith("10.")) {
+            dois.add(doi);
+          }
+        } catch {
+        }
+      });
+    });
+    return Array.from(dois);
+  }
   async function run() {
     const { article, citations } = ensureBanners();
     const isOrcidHost = location.hostname.endsWith("orcid.org");
@@ -1158,13 +1192,18 @@
       bg: "#fbc02d",
       lines: ["Checking citations..."]
     });
+    const additionalPubmedDois = location.hostname.endsWith("pubmed.ncbi.nlm.nih.gov") ? collectPubmedReferenceDois() : [];
     const result = await checkStatus(id);
     const articleBg = ALERT_STATUSES.has(result.status) ? "#8b0000" : result.status === "unknown" ? "#fbc02d" : "#1b5e20";
     const articleLine = result.status === "retracted" ? "\u26A0\uFE0F This article has been retracted." : result.status === "withdrawn" ? "\u26A0\uFE0F This article has been withdrawn." : result.status === "expression_of_concern" ? "\u26A0\uFE0F This article has an expression of concern." : result.status === "unknown" ? "Article status unknown." : "\u{1F7E1} Article OK; citations pending.";
     updateBanner(article, { bg: articleBg, lines: [articleLine] });
     logDebug("Article banner updated", result);
     if (id.startsWith("10.")) {
-      const referenceResult = await checkReferences(id, updateReferenceProgress);
+      const referenceResult = await checkReferences(
+        id,
+        updateReferenceProgress,
+        additionalPubmedDois
+      );
       const referenceUnknown = Math.max(
         referenceResult.counts.unknown,
         referenceResult.failedChecks

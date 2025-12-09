@@ -210,10 +210,26 @@ export async function checkStatus(id: string): Promise<StatusResult> {
 
 export async function checkReferences(
   doi: string,
-  onProgress: (done: number, total: number) => void
+  onProgress: (done: number, total: number) => void,
+  additionalDois: string[] = []
 ): Promise<ReferenceCheckResult> {
   const message = await fetchCrossrefMessage(doi);
-  if (!message)
+  const references: unknown = message?.reference ?? [];
+  const refList = Array.isArray(references) ? references : [];
+  const crossrefDois = refList
+    .map((ref) => {
+      if (!ref || typeof ref !== "object") return null;
+      const doiValue = (ref as { DOI?: string }).DOI;
+      if (typeof doiValue === "string" && doiValue.startsWith("10."))
+        return doiValue;
+      return null;
+    })
+    .filter((val): val is string => Boolean(val));
+
+  const extraDois = (additionalDois || []).filter((d) => d.startsWith("10."));
+  const combinedDois = Array.from(new Set([...crossrefDois, ...extraDois]));
+
+  if (!message && combinedDois.length === 0) {
     return {
       alerts: [],
       checked: 0,
@@ -227,23 +243,11 @@ export async function checkReferences(
         unknown: 1,
       },
     };
+  }
 
-  const references: unknown = message.reference ?? [];
-  const refList = Array.isArray(references) ? references : [];
-  const dois = refList
-    .map((ref) => {
-      if (!ref || typeof ref !== "object") return null;
-      const doiValue = (ref as { DOI?: string }).DOI;
-      if (typeof doiValue === "string" && doiValue.startsWith("10."))
-        return doiValue;
-      return null;
-    })
-    .filter((val): val is string => Boolean(val));
-
-  const uniqueDois = Array.from(new Set(dois));
   logDebug("checking references", {
-    totalFound: dois.length,
-    checking: uniqueDois.length,
+    totalFound: crossrefDois.length + extraDois.length,
+    checking: combinedDois.length,
   });
 
   const results: AlertEntry[] = [];
@@ -259,9 +263,9 @@ export async function checkReferences(
   };
 
   const worker = async () => {
-    while (index < uniqueDois.length) {
+    while (index < combinedDois.length) {
       const current = index++;
-      const refDoi = uniqueDois[current];
+      const refDoi = combinedDois[current];
       const status = await checkStatus(refDoi);
       checked += 1;
       if (status.status === "unknown") {
@@ -279,13 +283,13 @@ export async function checkReferences(
       } else {
         counts.ok += 1;
       }
-      onProgress(checked, uniqueDois.length);
+      onProgress(checked, combinedDois.length);
     }
   };
 
   const concurrency = Math.min(
     MAX_REFERENCE_CONCURRENCY,
-    uniqueDois.length || 1
+    combinedDois.length || 1
   );
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
@@ -293,7 +297,7 @@ export async function checkReferences(
   return {
     alerts: results,
     checked,
-    totalFound: dois.length,
+    totalFound: crossrefDois.length + extraDois.length,
     failedChecks,
     counts,
   };
