@@ -4,6 +4,7 @@ import { logDebug } from "../log";
 import { clearCaches } from "../cache";
 
 export type AlertItem = AlertEntry;
+export type BannerAction = { label: string; href: string; title?: string };
 
 const STATE = {
   basePadding: 0,
@@ -211,7 +212,12 @@ export function updateReferenceProgress(done: number, total: number): void {
 
 export function updateBanner(
   banner: HTMLDivElement,
-  options: { bg: string; lines: string[]; alerts?: AlertItem[] }
+  options: {
+    bg: string;
+    lines: string[];
+    alerts?: AlertItem[];
+    actions?: BannerAction[];
+  }
 ): void {
   banner.style.backgroundColor = options.bg;
   banner.style.display = "flex";
@@ -224,6 +230,32 @@ export function updateBanner(
   });
   if (options.alerts && options.alerts.length) {
     banner.appendChild(buildAlertList(options.alerts));
+  }
+  if (options.actions && options.actions.length) {
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.flexWrap = "wrap";
+    actions.style.gap = "8px";
+    actions.style.justifyContent = "center";
+
+    options.actions.forEach((action) => {
+      const link = document.createElement("a");
+      link.href = action.href;
+      link.textContent = action.label;
+      if (action.title) link.title = action.title;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+      link.style.background = "#ffe082";
+      link.style.color = "#4e342e";
+      link.style.padding = "6px 10px";
+      link.style.borderRadius = "6px";
+      link.style.fontWeight = "bold";
+      link.style.textDecoration = "none";
+      link.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+      actions.appendChild(link);
+    });
+
+    banner.appendChild(actions);
   }
   recalcPadding();
 }

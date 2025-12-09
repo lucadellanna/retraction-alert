@@ -28,6 +28,7 @@
         "https://arxiv.org/*",
         "https://www.biorxiv.org/*",
         "https://www.medrxiv.org/*",
+        "https://scholar.google.com/*",
         "https://osf.io/*",
         "https://academic.oup.com/*",
         "https://psycnet.apa.org/*",

@@ -20,6 +20,7 @@ import {
   updateReferenceProgress,
 } from "./ui/banners";
 import { handleNewsPage } from "./news";
+import { handleGoogleScholarProfile } from "./google-scholar";
 
 function extractNatureDoiFromPath(): string | null {
   if (!location.hostname.endsWith("nature.com")) return null;
@@ -47,6 +48,12 @@ function extractPmid(): string | null {
 
 async function run(): Promise<void> {
   const { article, citations } = ensureBanners();
+  const handledScholar = handleGoogleScholarProfile(
+    article,
+    citations,
+    window.location
+  );
+  if (handledScholar) return;
   const handledNews = await handleNewsPage(location.hostname, citations);
   if (handledNews) return;
   const orcidId = extractOrcidId();

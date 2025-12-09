@@ -640,6 +640,30 @@
     if (options.alerts && options.alerts.length) {
       banner.appendChild(buildAlertList(options.alerts));
     }
+    if (options.actions && options.actions.length) {
+      const actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.flexWrap = "wrap";
+      actions.style.gap = "8px";
+      actions.style.justifyContent = "center";
+      options.actions.forEach((action) => {
+        const link = document.createElement("a");
+        link.href = action.href;
+        link.textContent = action.label;
+        if (action.title) link.title = action.title;
+        link.target = "_blank";
+        link.rel = "noreferrer noopener";
+        link.style.background = "#ffe082";
+        link.style.color = "#4e342e";
+        link.style.padding = "6px 10px";
+        link.style.borderRadius = "6px";
+        link.style.fontWeight = "bold";
+        link.style.textDecoration = "none";
+        link.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+        actions.appendChild(link);
+      });
+      banner.appendChild(actions);
+    }
     recalcPadding();
   }
   function statusLabel(status) {
@@ -892,6 +916,87 @@
     return true;
   }
 
+  // src/google-scholar.ts
+  function isScholarProfile(loc) {
+    const isScholarHost = loc.hostname.includes("scholar.google.");
+    const isProfilePath = loc.pathname.includes("/citations");
+    if (!isScholarHost || !isProfilePath) return false;
+    const params = new URLSearchParams(loc.search);
+    return params.has("user");
+  }
+  function getScholarName() {
+    const nameEl = document.querySelector("#gsc_prf_in");
+    const text = nameEl?.textContent?.trim();
+    return text || null;
+  }
+  function findOrcidUrl(loc) {
+    const anchors = Array.from(
+      document.querySelectorAll('a[href*="orcid.org"]')
+    );
+    for (const anchor of anchors) {
+      const href = anchor.getAttribute("href") || anchor.href;
+      if (!href) continue;
+      try {
+        const url = new URL(href, loc.href);
+        const match = url.pathname.match(
+          /(\d{4}-\d{4}-\d{4}-[\dX]{3}[\dX]?)/
+        );
+        if (match?.[1]) {
+          return `https://orcid.org/${match[1]}`;
+        }
+      } catch {
+      }
+    }
+    return null;
+  }
+  function handleGoogleScholarProfile(articleBanner, citationsBanner, loc) {
+    if (!isScholarProfile(loc)) return false;
+    const orcidUrl = findOrcidUrl(loc);
+    if (orcidUrl) {
+      setWrapperVisibility(true);
+      citationsBanner.style.display = "flex";
+      updateBanner(articleBanner, {
+        bg: "#1b5e20",
+        lines: ["View this author on ORCID to run retraction checks."],
+        actions: [
+          {
+            href: orcidUrl,
+            label: "View on ORCID",
+            title: "Open ORCID profile to run retraction checks"
+          }
+        ]
+      });
+      updateBanner(citationsBanner, {
+        bg: "#1b5e20",
+        lines: ["Checks run on the ORCID profile."]
+      });
+    } else {
+      const name = getScholarName();
+      if (!name) {
+        setWrapperVisibility(false);
+        return true;
+      }
+      const searchUrl = `https://orcid.org/orcid-search/search?searchQuery=${encodeURIComponent(
+        name
+      )}`;
+      setWrapperVisibility(true);
+      citationsBanner.style.display = "none";
+      updateBanner(articleBanner, {
+        bg: "#fbc02d",
+        lines: ["Find this author on ORCID to run retraction checks."],
+        actions: [
+          {
+            href: searchUrl,
+            label: "Search on ORCID",
+            title: "Open ORCID search for this author"
+          }
+        ]
+      });
+    }
+    logDebug("Google Scholar profile handled", { hasOrcid: Boolean(orcidUrl) });
+    return true;
+  }
+
   // src/content-script.ts
   function extractNatureDoiFromPath() {
     if (!location.hostname.endsWith("nature.com")) return null;
@@ -916,6 +1021,12 @@
   }
   async function run() {
     const { article, citations } = ensureBanners();
+    const handledScholar = handleGoogleScholarProfile(
+      article,
+      citations,
+      window.location
+    );
+    if (handledScholar) return;
     const handledNews = await handleNewsPage(location.hostname, citations);
     if (handledNews) return;
     const orcidId = extractOrcidId();
