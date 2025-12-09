@@ -149,6 +149,10 @@ export async function fetchWork(
 
 export async function checkStatus(id: string): Promise<StatusResult> {
   if (!id.startsWith("10.")) return { status: "unknown" };
+  const normalizedId = id.toLowerCase();
+  if (normalizedId.includes("osf.io/")) {
+    return { status: "unknown" };
+  }
 
   const cached = await getCache<StatusResult>(`status:${id}`);
   if (cached) {

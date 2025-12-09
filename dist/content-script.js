@@ -202,6 +202,10 @@
   }
   async function checkStatus(id) {
     if (!id.startsWith("10.")) return { status: "unknown" };
+    const normalizedId = id.toLowerCase();
+    if (normalizedId.includes("osf.io/")) {
+      return { status: "unknown" };
+    }
     const cached = await getCache(`status:${id}`);
     if (cached) {
       logDebug("using cached status", id);
