@@ -198,6 +198,19 @@ export async function handleArticlePage(
   );
   const referenceCachedCount = referenceResult.checked - referenceResult.failedChecks;
 
+  let mailto: string | null = null;
+  const correspondingEmail = (() => {
+    const meta = document.querySelector('meta[name="citation_author_email"]');
+    return meta?.getAttribute("content")?.trim() || null;
+  })();
+  if (referenceResult.alerts.length) {
+    mailto = createEmailLink(
+      id,
+      correspondingEmail ?? "",
+      referenceResult.alerts
+    );
+  }
+
   updateBanner(articleBanner, {
     bg: finalBg,
     textColor: referenceUnknown ? COLORS.textDark : undefined,
@@ -209,6 +222,15 @@ export async function handleArticlePage(
         : undefined,
     lines: finalLines,
     alerts: referenceResult.alerts,
+    actions:
+      mailto && referenceResult.alerts.length
+        ? [
+            {
+              href: mailto,
+              label: "Email corresponding author",
+            },
+          ]
+        : undefined,
   });
   progress.update(
     refTotal || referenceResult.checked,
@@ -218,3 +240,4 @@ export async function handleArticlePage(
   logDebug("Reference banner updated", referenceResult);
   return true;
 }
+import { createEmailLink } from "../ui/banners";
