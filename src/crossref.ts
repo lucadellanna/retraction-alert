@@ -5,6 +5,7 @@ import {
   CROSSREF_USER_AGENT,
   CROSSREF_RATE_LIMIT_MS,
   CROSSREF_MAX_RETRIES,
+  UNKNOWN_CACHE_TTL_MS,
 } from "./constants";
 import { getCache, setCache } from "./cache";
 import { extractDoiFromHref } from "./doi";
@@ -118,20 +119,23 @@ function findAlertInTexts(
 export async function fetchCrossrefMessage(
   id: string
 ): Promise<Record<string, unknown> | null> {
+  const normId = id.toLowerCase();
   try {
-    const cached = await getCache<Record<string, unknown>>(`crossref:${id}`);
+    const cached = await getCache<Record<string, unknown>>(
+      `crossref:${normId}`
+    );
     if (cached) return cached;
 
     // Crossref API expects the DOI path with slashes intact; encoding the entire
     // string turns "/" into %2F and triggers 400. Encode only exotic chars.
-    const safeId = encodeURI(id);
+    const safeId = encodeURI(normId);
     const url = `https://api.crossref.org/v1/works/${safeId}`;
     const data = await fetchJsonViaBackground(url);
     if (!data) return null;
     const message =
       (data as { message?: Record<string, unknown> }).message ?? null;
     if (!message) return null;
-    void setCache(`crossref:${id}`, message);
+    void setCache(`crossref:${normId}`, message);
     logDebug("parsed Crossref payload", {
       updateTo: (message as { "update-to"?: unknown })["update-to"],
       assertion: (message as { assertion?: unknown })["assertion"],
@@ -216,7 +220,7 @@ function detectAlertFromMessage(message: Record<string, unknown>): StatusResult 
 export async function fetchWork(
   doi: string
 ): Promise<StatusResult & { title?: string }> {
-  const safeDoi = encodeURI(doi);
+  const safeDoi = encodeURI(doi.toLowerCase());
   const targetUrl = `https://api.crossref.org/v1/works/${safeDoi}`;
   try {
     const data = await fetchJsonViaBackground(targetUrl);
@@ -273,25 +277,31 @@ export async function checkStatus(id: string): Promise<StatusResult> {
     return { status: "unknown" };
   }
 
-  const cached = await getCache<StatusResult>(`status:${id}`);
+  const cached = await getCache<StatusResult>(`status:${normalizedId}`);
   if (cached) {
     logDebug("using cached status", id);
     return cached;
   }
 
   logDebug("checkStatus fetch start", { id });
-  const message = await fetchCrossrefMessage(id);
-  if (!message) return { status: "unknown" };
+  const message = await fetchCrossrefMessage(normalizedId);
+  if (!message) {
+    void setCache(`status:${normalizedId}`, { status: "unknown" }, UNKNOWN_CACHE_TTL_MS);
+    return { status: "unknown" };
+  }
 
   try {
     const detected = detectAlertFromMessage(message);
     logDebug("checkStatus result", { id, detected });
     if (detected.status !== "unknown") {
-      void setCache(`status:${id}`, detected);
+      void setCache(`status:${normalizedId}`, detected);
+    } else {
+      void setCache(`status:${normalizedId}`, detected, UNKNOWN_CACHE_TTL_MS);
     }
     return detected;
   } catch (error) {
     logDebug("checkStatus error", error);
+    void setCache(`status:${normalizedId}`, { status: "unknown" }, UNKNOWN_CACHE_TTL_MS);
     return { status: "unknown" };
   }
 }
@@ -309,12 +319,14 @@ export async function checkReferences(
       if (!ref || typeof ref !== "object") return null;
       const doiValue = (ref as { DOI?: string }).DOI;
       if (typeof doiValue === "string" && doiValue.startsWith("10."))
-        return doiValue;
+        return doiValue.toLowerCase();
       return null;
     })
     .filter((val): val is string => Boolean(val));
 
-  const extraDois = (additionalDois || []).filter((d) => d.startsWith("10."));
+  const extraDois = (additionalDois || [])
+    .filter((d) => d.startsWith("10."))
+    .map((d) => d.toLowerCase());
   const combinedDois = Array.from(new Set([...crossrefDois, ...extraDois]));
 
   if (!message && combinedDois.length === 0) {
@@ -354,7 +366,20 @@ export async function checkReferences(
     while (index < combinedDois.length) {
       const current = index++;
       const refDoi = combinedDois[current];
-      const status = await checkStatus(refDoi);
+      const cacheKey = `status:${refDoi.toLowerCase()}`;
+      const cachedStatus = await getCache<StatusResult>(cacheKey);
+      let status: StatusResult;
+      if (cachedStatus && cachedStatus.status !== "unknown") {
+        status = cachedStatus;
+        logDebug("using cached status (reference)", refDoi);
+      } else {
+        status = await checkStatus(refDoi);
+        if (status.status !== "unknown") {
+          void setCache(cacheKey, status);
+        } else {
+          void setCache(cacheKey, status, UNKNOWN_CACHE_TTL_MS);
+        }
+      }
       checked += 1;
       if (status.status === "unknown") {
         failedChecks += 1;

@@ -12,6 +12,7 @@ type ProgressOptions = {
   trackColor?: string;
   width?: string;
   height?: string;
+  hideLabelIfEmpty?: boolean;
 };
 
 export function createProgressBar(
@@ -57,7 +58,9 @@ export function createProgressBar(
     const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
     label.textContent =
       extraLabel ??
-      `Progress: ${done}/${total} checked • remaining ${remaining}`;
+      (options.hideLabelIfEmpty && total === 0
+        ? ""
+        : `Progress: ${done}/${total} checked • remaining ${remaining}`);
     bar.style.width = `${pct}%`;
   };
 

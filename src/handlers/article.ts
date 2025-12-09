@@ -15,6 +15,7 @@ import {
 import { COLORS } from "../ui/colors";
 import { logDebug } from "../log";
 import { createProgressBar, ProgressHandle } from "../ui/progress";
+import { getCache } from "../cache";
 
 function extractNatureDoiFromPath(loc: Location): string | null {
   if (!loc.hostname.endsWith("nature.com")) return null;
@@ -123,10 +124,7 @@ export async function handleArticlePage(
       : result.status === "unknown"
       ? "Article status unknown."
       : "";
-  const initialLines =
-    articleLine === ""
-      ? ["Checking citations..."]
-      : [articleLine, "Checking citations..."];
+  const initialLines = articleLine === "" ? [] : [articleLine];
   updateBanner(articleBanner, { bg: articleBg, lines: initialLines });
   logDebug("Article banner updated", result);
 
@@ -137,6 +135,7 @@ export async function handleArticlePage(
     labelColor: COLORS.textLight,
     trackColor: COLORS.link,
     barColor: "#f57f17",
+    hideLabelIfEmpty: true,
   });
 
   let refTotal = 0;
@@ -144,11 +143,13 @@ export async function handleArticlePage(
     id,
     (done, total) => {
       refTotal = total;
-      progress.update(
-        done,
-        total,
-        `Checking citations... (${done}/${total || "?"})`
-      );
+      if (total > 0) {
+        progress.update(
+          done,
+          total,
+          `Checking citations... (${done}/${total})`
+        );
+      }
     },
     additionalPubmedDois
   );
@@ -192,6 +193,11 @@ export async function handleArticlePage(
   const finalLines =
     articleLine === "" ? [citationsLine] : [articleLine, citationsLine];
 
+  const cachedStatuses = await getCache<Record<string, unknown>>(
+    `status:${id.toLowerCase()}`
+  );
+  const referenceCachedCount = referenceResult.checked - referenceResult.failedChecks;
+
   updateBanner(articleBanner, {
     bg: finalBg,
     textColor: referenceUnknown ? COLORS.textDark : undefined,
@@ -207,7 +213,7 @@ export async function handleArticlePage(
   progress.update(
     refTotal || referenceResult.checked,
     refTotal || referenceResult.checked,
-    "Citations checked"
+    `Citations checked (${referenceCachedCount}/${refTotal || referenceResult.checked} from cache)`
   );
   logDebug("Reference banner updated", referenceResult);
   return true;
