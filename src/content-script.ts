@@ -87,6 +87,46 @@ function collectPubmedReferenceDois(): string[] {
   return Array.from(dois);
 }
 
+function highlightOrcidAlerts(alerts: AlertEntry[]): void {
+  if (!alerts.length) return;
+  const alertMap = new Map<string, AlertEntry>(
+    alerts.map((a) => [a.id.toLowerCase(), a])
+  );
+  const anchors = Array.from(
+    document.querySelectorAll("a[href]")
+  ) as HTMLAnchorElement[];
+  anchors.forEach((anchor) => {
+    const href = anchor.getAttribute("href") || anchor.href || "";
+    const text = anchor.textContent || "";
+    const doi =
+      extractDoiFromHref(href) || extractDoiFromHref(text);
+    if (!doi) return;
+    const alert = alertMap.get(doi.toLowerCase());
+    if (!alert) return;
+    const target =
+      (anchor.closest("[data-work-id]") as HTMLElement | null) ||
+      (anchor.closest("li") as HTMLElement | null) ||
+      anchor;
+    if (!target || target.dataset.retractionAlertMarked) return;
+    target.dataset.retractionAlertMarked = "1";
+    target.style.borderLeft = "4px solid #b71c1c";
+    target.style.backgroundColor = "#ffebee";
+    target.style.paddingLeft = "8px";
+    const badge = document.createElement("span");
+    badge.textContent = "Retracted";
+    badge.style.background = "#b71c1c";
+    badge.style.color = "#fff";
+    badge.style.fontSize = "12px";
+    badge.style.fontWeight = "bold";
+    badge.style.padding = "2px 6px";
+    badge.style.borderRadius = "4px";
+    badge.style.marginLeft = "8px";
+    badge.style.display = "inline-block";
+    anchor.insertAdjacentElement("afterend", badge);
+  });
+  logDebug("highlighted orcid alerts", { count: alerts.length });
+}
+
 async function run(): Promise<void> {
   const { article, citations } = ensureBanners();
   const isOrcidHost = location.hostname.endsWith("orcid.org");
@@ -121,6 +161,7 @@ async function run(): Promise<void> {
       citationsResult.counts.unknown,
       citationsResult.failedChecks
     );
+    highlightOrcidAlerts(worksResult.alerts);
     const worksHasEoc = worksResult.alerts.some(
       (a) => a.status === "expression_of_concern"
     );

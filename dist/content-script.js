@@ -47,7 +47,7 @@
   }
 
   // src/doi.ts
-  function extractDoiFromHref2(href) {
+  function extractDoiFromHref(href) {
     try {
       const decoded = decodeURIComponent(href);
       const match = decoded.match(/10\.\d{4,9}\/[^\s"'>?#)]+/);
@@ -192,15 +192,14 @@
       const url = `https://api.crossref.org/v1/works/${safeId}`;
       const data = await fetchJsonViaBackground(url);
       if (!data) return null;
-      const message = data?.message;
-      if (message) {
-        void setCache(`crossref:${id}`, message);
-      }
+      const message = data.message ?? null;
+      if (!message) return null;
+      void setCache(`crossref:${id}`, message);
       logDebug("parsed Crossref payload", {
-        updateTo: message?.["update-to"],
-        assertion: message?.assertion
+        updateTo: message["update-to"],
+        assertion: message["assertion"]
       });
-      return message ?? null;
+      return message;
     } catch (error) {
       logDebug("fetchCrossrefMessage error", error);
       return null;
@@ -869,12 +868,12 @@
       try {
         const url = new URL(a.href, location.href);
         if (SCIENCE_HOSTS.some((h) => url.hostname.includes(h))) {
-          let doi = extractDoiFromHref2(url.href) || mapPublisherUrlToDoi(url.href);
+          let doi = extractDoiFromHref(url.href) || mapPublisherUrlToDoi(url.href);
           if (!doi) {
             const redirect = url.searchParams.get("redirect_uri");
             if (redirect) {
               const decoded = decodeURIComponent(redirect);
-              doi = extractDoiFromHref2(decoded) || mapPublisherUrlToDoi(decoded);
+              doi = extractDoiFromHref(decoded) || mapPublisherUrlToDoi(decoded);
             }
           }
           if (doi) candidateDois.add(doi);
@@ -1129,6 +1128,41 @@
     });
     return Array.from(dois);
   }
+  function highlightOrcidAlerts(alerts) {
+    if (!alerts.length) return;
+    const alertMap = new Map(
+      alerts.map((a) => [a.id.toLowerCase(), a])
+    );
+    const anchors = Array.from(
+      document.querySelectorAll("a[href]")
+    );
+    anchors.forEach((anchor) => {
+      const href = anchor.getAttribute("href") || anchor.href || "";
+      const text = anchor.textContent || "";
+      const doi = extractDoiFromHref(href) || extractDoiFromHref(text);
+      if (!doi) return;
+      const alert = alertMap.get(doi.toLowerCase());
+      if (!alert) return;
+      const target = anchor.closest("[data-work-id]") || anchor.closest("li") || anchor;
+      if (!target || target.dataset.retractionAlertMarked) return;
+      target.dataset.retractionAlertMarked = "1";
+      target.style.borderLeft = "4px solid #b71c1c";
+      target.style.backgroundColor = "#ffebee";
+      target.style.paddingLeft = "8px";
+      const badge = document.createElement("span");
+      badge.textContent = "Retracted";
+      badge.style.background = "#b71c1c";
+      badge.style.color = "#fff";
+      badge.style.fontSize = "12px";
+      badge.style.fontWeight = "bold";
+      badge.style.padding = "2px 6px";
+      badge.style.borderRadius = "4px";
+      badge.style.marginLeft = "8px";
+      badge.style.display = "inline-block";
+      anchor.insertAdjacentElement("afterend", badge);
+    });
+    logDebug("highlighted orcid alerts", { count: alerts.length });
+  }
   async function run() {
     const { article, citations } = ensureBanners();
     const isOrcidHost = location.hostname.endsWith("orcid.org");
@@ -1163,6 +1197,7 @@
         citationsResult.counts.unknown,
         citationsResult.failedChecks
       );
+      highlightOrcidAlerts(worksResult.alerts);
       const worksHasEoc = worksResult.alerts.some(
         (a) => a.status === "expression_of_concern"
       );
