@@ -13,6 +13,7 @@ import { ALERT_STATUSES } from "../constants";
 import { AlertEntry } from "../types";
 import { logDebug } from "../log";
 import { COLORS } from "../ui/colors";
+import { createProgressBar, ProgressHandle } from "../ui/progress";
 
 function highlightOrcidAlerts(alerts: AlertEntry[]): void {
   if (!alerts.length) return;
@@ -61,18 +62,27 @@ export async function handleOrcidProfile(
   if (!orcidId) return false;
 
   logDebug("Detected ORCID", orcidId);
+  citationsBanner.style.display = "none";
   updateBanner(articleBanner, {
     bg: COLORS.warning,
-    lines: ["Checking ORCID works..."],
+    lines: ["Checking ORCID works and cited works..."],
   });
-  updateBanner(citationsBanner, {
-    bg: COLORS.warning,
-    lines: ["Checking cited works..."],
+  const progress: ProgressHandle = createProgressBar(articleBanner, {
+    id: "retraction-alert-orcid-progress",
+    labelColor: COLORS.textLight,
+    trackColor: COLORS.link,
+    barColor: "#f57f17",
   });
 
+  // Phase 1: works
+  progress.update(0, 1, "Checking works...");
   const worksResult = await checkOrcidWorks(orcidId);
+  progress.update(1, 1, "Works checked. Checking cited works...");
+
+  // Phase 2: citations
   const allDois = await fetchOrcidDois(orcidId);
   const citationsResult = await checkCitedRetractedFromWorks(allDois);
+
   const citationsUnknown = Math.max(
     citationsResult.counts.unknown,
     citationsResult.failedChecks
@@ -84,12 +94,24 @@ export async function handleOrcidProfile(
   const citationsHasEoc = citationsResult.alerts.some(
     (a) => a.status === "expression_of_concern"
   );
+
+  const combinedAlerts = [...worksResult.alerts, ...citationsResult.alerts];
+
   updateBanner(articleBanner, {
-    bg: worksHasEoc
-      ? COLORS.danger
-      : worksResult.failedChecks
-      ? COLORS.warning
-      : COLORS.ok,
+    bg:
+      worksHasEoc || citationsHasEoc || citationsResult.alerts.length
+        ? COLORS.danger
+        : citationsUnknown || worksResult.failedChecks || citationsResult.failedChecks
+        ? COLORS.warning
+        : COLORS.ok,
+    textColor:
+      citationsUnknown || worksResult.failedChecks || citationsResult.failedChecks
+        ? COLORS.textDark
+        : undefined,
+    lineColors:
+      citationsUnknown || worksResult.failedChecks || citationsResult.failedChecks
+        ? [COLORS.textDark, COLORS.textDark]
+        : undefined,
     lines: [
       countsSummary(
         "Works",
@@ -97,42 +119,24 @@ export async function handleOrcidProfile(
         worksResult.totalFound || worksResult.checked,
         worksResult.failedChecks
       ),
-    ],
-    alerts: worksResult.alerts,
-  });
-  updateBanner(citationsBanner, {
-    bg:
-      citationsHasEoc || citationsResult.alerts.length
-        ? COLORS.danger
-        : citationsUnknown
-        ? COLORS.neutral
-        : COLORS.ok,
-      textColor: citationsUnknown ? COLORS.textDark : undefined,
-      lineColors: citationsUnknown
-        ? [COLORS.textDark, COLORS.ok, COLORS.danger]
-        : undefined,
-    lines: citationsUnknown
-      ? [
-          `Citations: ${
+      citationsUnknown
+        ? `Cited works: ${
             citationsResult.totalFound || citationsResult.checked
-          } total`,
-          `retracted ${citationsResult.counts.retracted} • withdrawn ${citationsResult.counts.withdrawn} • expression of concern ${citationsResult.counts.expression_of_concern}`,
-          `unknown/failed ${citationsUnknown}`,
-        ]
-      : [
-          countsSummary(
-            "Citations",
+          } total • retracted ${citationsResult.counts.retracted} • withdrawn ${
+            citationsResult.counts.withdrawn
+          } • expression of concern ${
+            citationsResult.counts.expression_of_concern
+          } • unknown/failed ${citationsUnknown}`
+        : countsSummary(
+            "Cited works",
             citationsResult.counts,
             citationsResult.totalFound || citationsResult.checked,
             citationsResult.failedChecks
           ),
-        ],
-    alerts: citationsResult.alerts,
+    ],
+    alerts: combinedAlerts,
   });
-  logDebug("ORCID banner updated", {
-    works: worksResult,
-    citations: citationsResult,
-  });
+  progress.update(1, 1, "ORCID checks complete");
   setWrapperVisibility(true);
   return true;
 }

@@ -352,7 +352,7 @@ function buildAlertList(alerts: AlertItem[]): HTMLElement {
     link.textContent = a.title ? `${a.title} (${a.id})` : a.id;
     link.target = "_blank";
     link.rel = "noreferrer noopener";
-    link.style.color = COLORS.link;
+    link.style.color = COLORS.textLight;
     link.style.textDecoration = "underline";
     row.appendChild(link);
 
