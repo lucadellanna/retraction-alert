@@ -5,6 +5,7 @@ import { clearCaches } from "../cache";
 
 export type AlertItem = AlertEntry;
 export type BannerAction = { label: string; href: string; title?: string };
+type BannerLineColor = string | undefined;
 
 const STATE = {
   basePadding: 0,
@@ -217,15 +218,20 @@ export function updateBanner(
     lines: string[];
     alerts?: AlertItem[];
     actions?: BannerAction[];
+    textColor?: string;
+    lineColors?: BannerLineColor[];
   }
 ): void {
   banner.style.backgroundColor = options.bg;
+  banner.style.color = options.textColor ?? "#ffffff";
   banner.style.display = "flex";
   banner.innerHTML = "";
-  options.lines.forEach((line) => {
+  options.lines.forEach((line, idx) => {
     const div = document.createElement("div");
     div.textContent = line;
     div.style.textAlign = "center";
+    const lineColor = options.lineColors?.[idx];
+    if (lineColor) div.style.color = lineColor;
     banner.appendChild(div);
   });
   if (options.alerts && options.alerts.length) {

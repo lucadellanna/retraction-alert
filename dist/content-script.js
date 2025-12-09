@@ -638,12 +638,15 @@
   }
   function updateBanner(banner, options) {
     banner.style.backgroundColor = options.bg;
+    banner.style.color = options.textColor ?? "#ffffff";
     banner.style.display = "flex";
     banner.innerHTML = "";
-    options.lines.forEach((line) => {
+    options.lines.forEach((line, idx) => {
       const div = document.createElement("div");
       div.textContent = line;
       div.style.textAlign = "center";
+      const lineColor = options.lineColors?.[idx];
+      if (lineColor) div.style.color = lineColor;
       banner.appendChild(div);
     });
     if (options.alerts && options.alerts.length) {
@@ -1058,6 +1061,10 @@
       const worksResult = await checkOrcidWorks(orcidId);
       const allDois = await fetchOrcidDois(orcidId);
       const citationsResult = await checkCitedRetractedFromWorks(allDois);
+      const citationsUnknown = Math.max(
+        citationsResult.counts.unknown,
+        citationsResult.failedChecks
+      );
       const worksHasEoc = worksResult.alerts.some(
         (a) => a.status === "expression_of_concern"
       );
@@ -1077,8 +1084,18 @@
         alerts: worksResult.alerts
       });
       updateBanner(citations, {
-        bg: citationsHasEoc ? "#8b0000" : citationsResult.alerts.length ? "#8b0000" : citationsResult.failedChecks ? "#fbc02d" : "#1b5e20",
-        lines: [
+        bg: citationsHasEoc || citationsResult.alerts.length ? "#8b0000" : citationsUnknown ? "#ffffff" : "#1b5e20",
+        textColor: citationsUnknown ? "#000000" : void 0,
+        lineColors: citationsUnknown ? [
+          "#000000",
+          "#1b5e20",
+          "#8b0000"
+        ] : void 0,
+        lines: citationsUnknown ? [
+          `Citations: ${citationsResult.totalFound || citationsResult.checked} total`,
+          `retracted ${citationsResult.counts.retracted} \u2022 withdrawn ${citationsResult.counts.withdrawn} \u2022 expression of concern ${citationsResult.counts.expression_of_concern}`,
+          `unknown/failed ${citationsUnknown}`
+        ] : [
           countsSummary(
             "Citations",
             citationsResult.counts,
@@ -1123,9 +1140,19 @@
     logDebug("Article banner updated", result);
     if (id.startsWith("10.")) {
       const referenceResult = await checkReferences(id, updateReferenceProgress);
+      const referenceUnknown = Math.max(
+        referenceResult.counts.unknown,
+        referenceResult.failedChecks
+      );
       updateBanner(citations, {
-        bg: referenceResult.alerts.length ? "#8b0000" : referenceResult.failedChecks ? "#fbc02d" : "#1b5e20",
-        lines: [
+        bg: referenceResult.alerts.length ? "#8b0000" : referenceUnknown ? "#ffffff" : "#1b5e20",
+        textColor: referenceUnknown ? "#000000" : void 0,
+        lineColors: referenceUnknown ? ["#000000", "#1b5e20", "#8b0000"] : void 0,
+        lines: referenceUnknown ? [
+          `Citations: ${referenceResult.totalFound || referenceResult.checked} total`,
+          `retracted ${referenceResult.counts.retracted} \u2022 withdrawn ${referenceResult.counts.withdrawn} \u2022 expression of concern ${referenceResult.counts.expression_of_concern}`,
+          `unknown/failed ${referenceUnknown}`
+        ] : [
           countsSummary(
             "Citations",
             referenceResult.counts,

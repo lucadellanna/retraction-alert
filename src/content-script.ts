@@ -78,6 +78,10 @@ async function run(): Promise<void> {
     const worksResult = await checkOrcidWorks(orcidId);
     const allDois = await fetchOrcidDois(orcidId);
     const citationsResult = await checkCitedRetractedFromWorks(allDois);
+    const citationsUnknown = Math.max(
+      citationsResult.counts.unknown,
+      citationsResult.failedChecks
+    );
     const worksHasEoc = worksResult.alerts.some(
       (a) => a.status === "expression_of_concern"
     );
@@ -101,21 +105,36 @@ async function run(): Promise<void> {
       alerts: worksResult.alerts,
     });
     updateBanner(citations, {
-      bg: citationsHasEoc
-        ? "#8b0000"
-        : citationsResult.alerts.length
-        ? "#8b0000"
-        : citationsResult.failedChecks
-        ? "#fbc02d"
-        : "#1b5e20",
-      lines: [
-        countsSummary(
-          "Citations",
-          citationsResult.counts,
-          citationsResult.totalFound || citationsResult.checked,
-          citationsResult.failedChecks
-        ),
-      ],
+      bg:
+        citationsHasEoc || citationsResult.alerts.length
+          ? "#8b0000"
+          : citationsUnknown
+          ? "#ffffff"
+          : "#1b5e20",
+      textColor: citationsUnknown ? "#000000" : undefined,
+      lineColors: citationsUnknown
+        ? [
+            "#000000",
+            "#1b5e20",
+            "#8b0000",
+          ]
+        : undefined,
+      lines: citationsUnknown
+        ? [
+            `Citations: ${
+              citationsResult.totalFound || citationsResult.checked
+            } total`,
+            `retracted ${citationsResult.counts.retracted} • withdrawn ${citationsResult.counts.withdrawn} • expression of concern ${citationsResult.counts.expression_of_concern}`,
+            `unknown/failed ${citationsUnknown}`,
+          ]
+        : [
+            countsSummary(
+              "Citations",
+              citationsResult.counts,
+              citationsResult.totalFound || citationsResult.checked,
+              citationsResult.failedChecks
+            ),
+          ],
       alerts: citationsResult.alerts,
     });
     logDebug("ORCID banner updated", {
@@ -176,20 +195,34 @@ async function run(): Promise<void> {
 
   if (id.startsWith("10.")) {
     const referenceResult = await checkReferences(id, updateReferenceProgress);
+    const referenceUnknown = Math.max(
+      referenceResult.counts.unknown,
+      referenceResult.failedChecks
+    );
     updateBanner(citations, {
       bg: referenceResult.alerts.length
         ? "#8b0000"
-        : referenceResult.failedChecks
-        ? "#fbc02d"
+        : referenceUnknown
+        ? "#ffffff"
         : "#1b5e20",
-      lines: [
-        countsSummary(
-          "Citations",
-          referenceResult.counts,
-          referenceResult.totalFound || referenceResult.checked,
-          referenceResult.failedChecks
-        ),
-      ],
+      textColor: referenceUnknown ? "#000000" : undefined,
+      lineColors: referenceUnknown ? ["#000000", "#1b5e20", "#8b0000"] : undefined,
+      lines: referenceUnknown
+        ? [
+            `Citations: ${
+              referenceResult.totalFound || referenceResult.checked
+            } total`,
+            `retracted ${referenceResult.counts.retracted} • withdrawn ${referenceResult.counts.withdrawn} • expression of concern ${referenceResult.counts.expression_of_concern}`,
+            `unknown/failed ${referenceUnknown}`,
+          ]
+        : [
+            countsSummary(
+              "Citations",
+              referenceResult.counts,
+              referenceResult.totalFound || referenceResult.checked,
+              referenceResult.failedChecks
+            ),
+          ],
       alerts: referenceResult.alerts,
     });
     logDebug("Reference banner updated", referenceResult);
