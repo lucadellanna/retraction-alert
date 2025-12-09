@@ -2,11 +2,49 @@ import {
   ALERT_STATUSES,
   MAX_REFERENCE_CONCURRENCY,
   MAX_REFERENCED_DOIS,
+  CROSSREF_USER_AGENT,
+  CROSSREF_RATE_LIMIT_MS,
+  CROSSREF_MAX_RETRIES,
 } from "./constants";
 import { getCache, setCache } from "./cache";
 import { extractDoiFromHref } from "./doi";
 import { logDebug } from "./log";
 import { ArticleStatus, StatusResult, ReferenceCheckResult, AlertEntry } from "./types";
+
+let lastRequestTime = 0;
+async function rateLimit(): Promise<void> {
+  const now = Date.now();
+  const elapsed = now - lastRequestTime;
+  if (elapsed < CROSSREF_RATE_LIMIT_MS) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, CROSSREF_RATE_LIMIT_MS - elapsed)
+    );
+  }
+  lastRequestTime = Date.now();
+}
+
+async function fetchWithBackoff(url: string): Promise<Response | null> {
+  let attempt = 0;
+  while (attempt <= CROSSREF_MAX_RETRIES) {
+    await rateLimit();
+    try {
+      const res = await fetch(url, {
+        cache: "no-store",
+        headers: { "User-Agent": CROSSREF_USER_AGENT },
+      });
+      if (res.status !== 429) return res;
+      const retryAfter = res.headers.get("retry-after");
+      const delayMs = retryAfter ? Number(retryAfter) * 1000 : 500;
+      logDebug("crossref 429, backing off", { url, delayMs });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    } catch (error) {
+      logDebug("crossref fetch error", { url, error });
+      return null;
+    }
+    attempt += 1;
+  }
+  return null;
+}
 
 async function fetchJsonViaBackground(
   url: string
@@ -42,7 +80,8 @@ async function fetchJsonViaBackground(
 
   try {
     logDebug("crossref fetch direct", { url });
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetchWithBackoff(url);
+    if (!res) return null;
     if (!res.ok) {
       logDebug("crossref fetch direct failed", { url, status: res.status });
       return null;

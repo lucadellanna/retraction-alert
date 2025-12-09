@@ -10,6 +10,10 @@ export const MAX_REFERENCE_CONCURRENCY = 4;
 export const MAX_REFERENCED_DOIS = 10000;
 export const SUPPORT_URL = "https://Luca-Dellanna.com/contact";
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const CROSSREF_USER_AGENT =
+  "RetractionAlert/0.3.0 (mailto:info@Luca-Dellanna.com)";
+export const CROSSREF_RATE_LIMIT_MS = 100; // ~10 req/s spacing
+export const CROSSREF_MAX_RETRIES = 2;
 
 export const NEWS_CONTACTS: Record<string, string> = {
   "wsj.com": "wsjcontact@wsj.com",

@@ -10,6 +10,9 @@
   var MAX_REFERENCED_DOIS = 1e4;
   var SUPPORT_URL = "https://Luca-Dellanna.com/contact";
   var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+  var CROSSREF_USER_AGENT = "RetractionAlert/0.3.0 (mailto:info@Luca-Dellanna.com)";
+  var CROSSREF_RATE_LIMIT_MS = 100;
+  var CROSSREF_MAX_RETRIES = 2;
   var NEWS_CONTACTS = {
     "wsj.com": "wsjcontact@wsj.com",
     "theguardian.com": "reader@theguardian.com",
@@ -423,6 +426,39 @@
   }
 
   // src/crossref.ts
+  var lastRequestTime = 0;
+  async function rateLimit() {
+    const now = Date.now();
+    const elapsed = now - lastRequestTime;
+    if (elapsed < CROSSREF_RATE_LIMIT_MS) {
+      await new Promise(
+        (resolve) => setTimeout(resolve, CROSSREF_RATE_LIMIT_MS - elapsed)
+      );
+    }
+    lastRequestTime = Date.now();
+  }
+  async function fetchWithBackoff(url) {
+    let attempt = 0;
+    while (attempt <= CROSSREF_MAX_RETRIES) {
+      await rateLimit();
+      try {
+        const res = await fetch(url, {
+          cache: "no-store",
+          headers: { "User-Agent": CROSSREF_USER_AGENT }
+        });
+        if (res.status !== 429) return res;
+        const retryAfter = res.headers.get("retry-after");
+        const delayMs = retryAfter ? Number(retryAfter) * 1e3 : 500;
+        logDebug("crossref 429, backing off", { url, delayMs });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      } catch (error) {
+        logDebug("crossref fetch error", { url, error });
+        return null;
+      }
+      attempt += 1;
+    }
+    return null;
+  }
   async function fetchJsonViaBackground(url) {
     const canMessage = typeof chrome !== "undefined" && !!chrome.runtime?.id && typeof chrome.runtime.sendMessage === "function";
     if (canMessage) {
@@ -450,7 +486,8 @@
     }
     try {
       logDebug("crossref fetch direct", { url });
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetchWithBackoff(url);
+      if (!res) return null;
       if (!res.ok) {
         logDebug("crossref fetch direct failed", { url, status: res.status });
         return null;
