@@ -7,6 +7,7 @@ URLS=(
   "https://www.nature.com/articles/s41586-024-07219-0#citeas"
   "https://pubmed.ncbi.nlm.nih.gov/39170312/"
   "https://scholar.google.com/scholar?cites=7181054636392857341"
+  "https://scholar.google.com/citations?user=KnlmZ6EAAAAJ"
   "https://orcid.org/0000-0003-2564-5043"
 )
 

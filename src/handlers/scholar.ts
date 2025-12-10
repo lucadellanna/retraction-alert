@@ -46,12 +46,28 @@ export async function handleScholarProfile(
   citationsBanner: HTMLDivElement,
   loc: Location
 ): Promise<boolean> {
-  if (!isScholarProfile(loc)) return false;
+  const isScholarHost = loc.hostname.includes("scholar.google.");
+  const citationsContainer = citationsBanner.parentElement as HTMLElement | null;
+  if (!isScholarProfile(loc)) {
+    if (!isScholarHost) return false;
+    // Non-profile Scholar page: show minimal notice and hide secondary banner.
+    citationsContainer?.remove();
+    setWrapperVisibility(true);
+    updateBanner(articleBanner, {
+      bg: COLORS.neutral,
+      textColor: COLORS.textDark,
+      lines: [
+        "Google Scholar general pages are not checked to respect their ToS.",
+      ],
+    });
+    logDebug("Scholar non-profile page handled");
+    return true;
+  }
 
   const orcidUrl = findOrcidUrl(loc);
   if (orcidUrl) {
     setWrapperVisibility(true);
-    citationsBanner.style.display = "flex";
+    citationsContainer?.remove();
     updateBanner(articleBanner, {
       bg: COLORS.ok,
       lines: ["View this author on ORCID to run retraction checks."],
@@ -62,10 +78,6 @@ export async function handleScholarProfile(
           title: "Open ORCID profile to run retraction checks",
         },
       ],
-    });
-    updateBanner(citationsBanner, {
-      bg: COLORS.ok,
-      lines: ["Checks run on the ORCID profile."],
     });
   } else {
     const name = getScholarName();
@@ -79,6 +91,7 @@ export async function handleScholarProfile(
     )}`;
     setWrapperVisibility(true);
     citationsBanner.style.display = "none";
+    citationsContainer?.remove();
     updateBanner(articleBanner, {
       bg: COLORS.warning,
       lines: ["Find this author on ORCID to run retraction checks."],
