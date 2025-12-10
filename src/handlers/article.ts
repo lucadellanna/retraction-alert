@@ -67,21 +67,158 @@ function highlightCitingParagraphs(alerts: { id: string }[]): void {
   const isInReferences = (el: Element) =>
     refRoots.some((root) => root.contains(el));
 
+  const refIdForInline = (el: Element): string | null => {
+    const attrs = [
+      el.getAttribute("data-rid"),
+      el.getAttribute("rid"),
+      el.getAttribute("data-ref-id"),
+      el.getAttribute("data-refid"),
+      el.getAttribute("href")?.replace(/^#/, ""),
+    ];
+    for (const val of attrs) {
+      if (val) return val.toLowerCase();
+    }
+    const sup = el.closest("sup");
+    if (sup) {
+      const supAttrs = [
+        sup.getAttribute("data-rid"),
+        sup.getAttribute("rid"),
+        sup.getAttribute("data-ref-id"),
+        sup.getAttribute("data-refid"),
+        sup.getAttribute("id"),
+      ];
+      for (const val of supAttrs) {
+        if (val) return val.toLowerCase();
+      }
+    }
+    return null;
+  };
+
   const highlighted = new Set<HTMLElement>();
-  const highlight = (el: Element | null) => {
-    const target =
-      (el?.closest("p") as HTMLElement | null) ||
-      (el?.closest("div") as HTMLElement | null);
+  const SENTENCE_CLASS = "ra-highlight-sentence";
+
+  const highlightAnchorOnly = (el: Element | null) => {
+    const target = (el as HTMLElement | null) || (el?.parentElement as HTMLElement | null);
     if (!target || highlighted.has(target) || isInReferences(target)) return;
     target.style.backgroundColor = COLORS.danger;
     target.style.color = COLORS.textLight;
-    target.style.padding = "4px";
+    target.style.padding = "1px 4px";
     target.style.borderRadius = "4px";
-    target.style.lineHeight = "1.5";
-    target.querySelectorAll("a").forEach((link) => {
-      (link as HTMLAnchorElement).style.color = COLORS.textLight;
-    });
+    target.style.display = "inline-block";
+    target.style.textDecoration = "none";
+    if (target instanceof HTMLAnchorElement) {
+      target.style.color = COLORS.textLight;
+    }
     highlighted.add(target);
+  };
+
+  const findTextPosition = (
+    nodes: Text[],
+    targetOffset: number
+  ): { node: Text; offset: number } | null => {
+    let acc = 0;
+    for (const n of nodes) {
+      const len = n.textContent?.length || 0;
+      if (acc + len >= targetOffset) {
+        return { node: n, offset: Math.max(0, targetOffset - acc) };
+      }
+      acc += len;
+    }
+    const last = nodes[nodes.length - 1];
+    if (!last) return null;
+    return { node: last, offset: last.textContent?.length || 0 };
+  };
+
+  const highlightSentence = (el: Element | null) => {
+    if (!el) return;
+    const container = el.closest<HTMLElement>("p, li, div") || el.parentElement;
+    if (!container || isInReferences(container)) return;
+    if (container.closest(`.${SENTENCE_CLASS}`)) return;
+
+    const text = container.textContent || "";
+    if (!text.trim()) return;
+
+    const beforeCount = container.querySelectorAll(`.${SENTENCE_CLASS}`).length;
+
+    const rangeToAnchor = document.createRange();
+    try {
+      rangeToAnchor.setStart(container, 0);
+      rangeToAnchor.setEnd(el, 0);
+    } catch {
+      highlightAnchorOnly(el);
+      return;
+    }
+    const anchorStart = rangeToAnchor.toString().length;
+    const anchorLen = (el.textContent || "").length;
+    const anchorEnd = anchorStart + anchorLen;
+
+    const prevBreak = Math.max(
+      text.lastIndexOf(".", anchorStart - 1),
+      text.lastIndexOf("?", anchorStart - 1),
+      text.lastIndexOf("!", anchorStart - 1),
+      text.lastIndexOf(";", anchorStart - 1),
+      text.lastIndexOf("\n", anchorStart - 1)
+    );
+    let sentenceStart = prevBreak >= 0 ? prevBreak + 1 : 0;
+    while (sentenceStart < text.length && /\s/.test(text[sentenceStart])) {
+      sentenceStart += 1;
+    }
+
+    const nextBreakCandidates = [
+      text.indexOf(".", anchorEnd),
+      text.indexOf("?", anchorEnd),
+      text.indexOf("!", anchorEnd),
+      text.indexOf(";", anchorEnd),
+      text.indexOf("\n", anchorEnd),
+    ].filter((v) => v >= 0);
+    const nextBreak = nextBreakCandidates.length
+      ? Math.min(...nextBreakCandidates)
+      : -1;
+    let sentenceEnd = nextBreak >= 0 ? nextBreak + 1 : text.length;
+    while (sentenceEnd > sentenceStart && /\s/.test(text[sentenceEnd - 1])) {
+      sentenceEnd -= 1;
+    }
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    let n: Node | null = walker.nextNode();
+    while (n) {
+      if (n.nodeType === Node.TEXT_NODE) textNodes.push(n as Text);
+      n = walker.nextNode();
+    }
+    if (!textNodes.length) return;
+
+    const startPos = findTextPosition(textNodes, sentenceStart);
+    const endPos = findTextPosition(textNodes, sentenceEnd);
+    if (!startPos || !endPos) {
+      highlightAnchorOnly(el);
+      return;
+    }
+
+    const sentenceRange = document.createRange();
+    try {
+      sentenceRange.setStart(startPos.node, startPos.offset);
+      sentenceRange.setEnd(endPos.node, endPos.offset);
+      const wrapper = document.createElement("span");
+      wrapper.className = SENTENCE_CLASS;
+      wrapper.style.backgroundColor = COLORS.danger;
+      wrapper.style.color = COLORS.textLight;
+      wrapper.style.borderRadius = "3px";
+      wrapper.style.padding = "2px 4px";
+      wrapper.style.lineHeight = "1.5";
+      wrapper.style.display = "inline";
+      wrapper.style.textDecoration = "none";
+      sentenceRange.surroundContents(wrapper);
+      wrapper.querySelectorAll("a").forEach((link) => {
+        (link as HTMLAnchorElement).style.color = COLORS.textLight;
+      });
+      if (container.querySelectorAll(`.${SENTENCE_CLASS}`).length === beforeCount) {
+        highlightAnchorOnly(el);
+      }
+    } catch {
+      // If the range cannot be wrapped cleanly, fall back to anchor-only highlight.
+      highlightAnchorOnly(el);
+    }
   };
 
   // Direct DOI mentions in the article body
@@ -93,23 +230,31 @@ function highlightCitingParagraphs(alerts: { id: string }[]): void {
       extractDoiFromHref(href)?.toLowerCase() ||
       mapPublisherUrlToDoi(href)?.toLowerCase();
     if (doi && alertDois.has(doi)) {
-      highlight(a);
+      highlightSentence(a);
+      return;
+    }
+    const refId = refIdForInline(a);
+    if (refId) {
+      const mapped = refMap.get(refId);
+      if (mapped && alertDois.has(mapped)) {
+        highlightSentence(a);
+      }
     }
   });
 
   // Inline citation links pointing to reference list items
-  const citationAnchors = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href^='#'], a[data-rid], a[title*='reference'], sup a"));
+  const citationAnchors = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      "a[href^='#'], a[data-rid], a[title*='reference'], sup a, sup[data-rid], sup[role='doc-noteref']"
+    )
+  );
   citationAnchors.forEach((a) => {
     if (isInReferences(a)) return;
-    const rid =
-      a.getAttribute("data-rid") ||
-      a.getAttribute("rid") ||
-      a.getAttribute("href")?.replace(/^#/, "") ||
-      "";
+    const rid = refIdForInline(a);
     if (!rid) return;
     const doi = refMap.get(rid.toLowerCase());
     if (doi && alertDois.has(doi)) {
-      highlight(a);
+      highlightSentence(a);
     }
   });
 }
