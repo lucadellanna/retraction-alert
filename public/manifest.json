@@ -47,7 +47,8 @@
         "https://www.reuters.com/*",
         "https://www.latimes.com/*",
         "https://www.nbcnews.com/*",
-        "https://www.cnn.com/*"
+        "https://www.cnn.com/*",
+        "https://www.nih.gov/*"
       ],
       "js": [
         "content-script.js"
