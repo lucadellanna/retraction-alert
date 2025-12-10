@@ -16,6 +16,7 @@ import { checkStatus, checkReferences } from "./crossref";
 import { extractDoiFromHref, mapPublisherUrlToDoi } from "./doi";
 import { logDebug } from "./log";
 import { createProgressBar, ProgressHandle } from "./ui/progress";
+import { highlightSentence } from "./ui/highlight";
 
 export async function handleNewsPage(
   hostname: string,
@@ -172,6 +173,24 @@ export async function handleNewsPage(
     ],
     alerts: allAlerts,
   });
+
+  // Highlight sentences containing flagged links
+  const alertDois = new Set(allAlerts.map((a) => a.id.toLowerCase()));
+  if (alertDois.size) {
+    const anchors = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>("a[href]")
+    );
+    anchors.forEach((a) => {
+      const href = a.getAttribute("href") || a.href || "";
+      const doi =
+        extractDoiFromHref(href)?.toLowerCase() ||
+        mapPublisherUrlToDoi(href)?.toLowerCase();
+      if (doi && alertDois.has(doi)) {
+        highlightSentence(a);
+      }
+    });
+  }
+
   progress?.update(
     totalCandidates,
     totalCandidates,
