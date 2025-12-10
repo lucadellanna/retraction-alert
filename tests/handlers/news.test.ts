@@ -15,10 +15,16 @@ async function loadAndTest(url: string): Promise<HTMLDivElement> {
   (global as any).location = dom.window.location;
 
   clearUiState();
+  const article = dom.window.document.createElement("div");
   const citations = dom.window.document.createElement("div");
+  dom.window.document.body.appendChild(article);
   dom.window.document.body.appendChild(citations);
 
-  const handled = await handleNewsPage(dom.window.location.hostname, citations);
+  const handled = await handleNewsPage(
+    dom.window.location.hostname,
+    article as HTMLDivElement,
+    citations
+  );
   assert.equal(handled, true, "news handler should handle this page");
   return citations as HTMLDivElement;
 }

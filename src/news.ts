@@ -20,6 +20,7 @@ import { highlightSentence } from "./ui/highlight";
 
 export async function handleNewsPage(
   hostname: string,
+  articleBanner: HTMLDivElement,
   citations: HTMLDivElement
 ): Promise<boolean> {
   const isNews = NEWS_HOSTS.some((h) => hostname.includes(h));
@@ -28,6 +29,9 @@ export async function handleNewsPage(
   // If a host is classified as both news and science (e.g., nih.gov), treat it
   // as science so we run the article workflow instead of the news flow.
   if (isScienceHost) return false;
+
+  // Hide the article banner for news pages to avoid an empty/transparent bar.
+  articleBanner.style.display = "none";
 
   const anchors = Array.from(
     document.querySelectorAll("a[href]")

@@ -31,6 +31,7 @@ export async function routePage(ctx: HandlerContext): Promise<boolean> {
   // News pages (link scanning)
   const newsHandled = await handleNewsPage(
     ctx.location.hostname,
+    ctx.article,
     ctx.citations
   );
   if (newsHandled) return true;
