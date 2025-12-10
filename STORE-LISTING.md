@@ -11,7 +11,7 @@ Retraction Alert automatically checks scholarly articles for retraction status u
 • Runs automatically: no pop-up or background UI needed.
 
 **Supported sites**  
-doi.org, PubMed, Nature, Lancet, Science, ScienceDirect, Springer, Wiley, Taylor & Francis, JAMA, NEJM, BMJ, PLOS, ACS, IEEE, ACM, arXiv, bioRxiv, medRxiv, OSF.
+Top scholarly venues and major news outlets worldwide: doi.org, PubMed, CDC, Nature/Science/Lancet/NEJM/JAMA/PNAS, CVPR/ICCV/NeurIPS/ICLR/ICML, Springer/Wiley/Elsevier/ACS/IEEE/ACM, arXiv/bioRxiv/medRxiv/OSF, plus leading global news sites (NYT, BBC, Guardian, CNN, Reuters, Fox, Bloomberg, and many more).
 
 **Privacy**  
 Retraction Alert reads the current page to extract DOIs/PMIDs and fetches status data from https://api.crossref.org. It does not collect, store, or share user data.

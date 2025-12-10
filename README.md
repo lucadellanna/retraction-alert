@@ -3,7 +3,7 @@
 Warns you when the current article—or any of its cited papers—has been retracted, withdrawn, or flagged with an expression of concern.
 
 ## What it does
-- Automatically runs on common scholarly domains (doi.org, PubMed, Nature, Lancet, Science, ScienceDirect, Springer, Wiley, Taylor & Francis, JAMA, NEJM, BMJ, PLOS, ACS, IEEE, ACM, arXiv, bioRxiv, medRxiv, OSF).
+- Automatically runs on top scholarly venues and major news sites worldwide (e.g., doi.org, PubMed, CDC, Nature/Science/Lancet/NEJM/JAMA, PNAS, CVPR/ICCV/NeurIPS/ICLR/ICML, Springer/Wiley/Elsevier, arXiv/bioRxiv/medRxiv, and leading global news outlets).
 - Extracts the DOI/PMID from the page (meta tags, URL patterns, or doi.org itself).
 - Queries Crossref (Retraction Watch/assertions/update-to) to determine status.
 - If the current article is retracted/withdrawn/concerned, shows a red banner.
