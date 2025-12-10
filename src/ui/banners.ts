@@ -232,7 +232,9 @@ export function ensureBanners(): {
     actions.style.justifyContent = "center";
     actions.style.padding = "8px 12px";
     actions.style.backgroundColor = "inherit";
-    actions.style.minWidth = "170px";
+    actions.style.minWidth = "0";
+    actions.style.width = "190px";
+    actions.style.boxSizing = "border-box";
 
     const makeLinkButton = (label: string, href: string, title?: string) => {
       const a = document.createElement("a");
@@ -248,7 +250,9 @@ export function ensureBanners(): {
       a.style.fontSize = "13px";
       a.style.textDecoration = "none";
       a.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+      a.style.display = "block";
       a.style.width = "100%";
+      a.style.boxSizing = "border-box";
       a.style.textAlign = "center";
       if (title) a.title = title;
       return a;
@@ -268,7 +272,9 @@ export function ensureBanners(): {
     infoBtn.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
     infoBtn.style.border = "none";
     infoBtn.style.cursor = "pointer";
+    infoBtn.style.display = "block";
     infoBtn.style.width = "100%";
+    infoBtn.style.boxSizing = "border-box";
     infoBtn.addEventListener("click", (e) => {
       e.preventDefault();
       openAboutModal();

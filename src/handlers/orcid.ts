@@ -63,6 +63,9 @@ export async function handleOrcidProfile(
 
   logDebug("Detected ORCID", orcidId);
   citationsBanner.style.display = "none";
+  if (citationsBanner.parentElement) {
+    (citationsBanner.parentElement as HTMLElement).style.display = "none";
+  }
   updateBanner(articleBanner, {
     bg: COLORS.warning,
     lines: ["Checking ORCID works and cited works..."],
