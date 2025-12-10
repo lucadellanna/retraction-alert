@@ -124,7 +124,9 @@ function highlightCitingParagraphs(alerts: { id: string }[]): void {
   const highlightSentenceSafe = (el: Element | null) => {
     if (!el) return;
     const target =
-      (el as HTMLElement).closest("p, li, div") || (el as HTMLElement);
+      (el as HTMLElement).closest<HTMLElement>("p, li, div") ||
+      (el as HTMLElement | null);
+    if (!target) return;
     if (isInReferences(target)) return;
     if (highlighted.has(target)) return;
     highlightSentence(target);
