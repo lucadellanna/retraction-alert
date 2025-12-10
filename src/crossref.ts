@@ -2,7 +2,7 @@ import {
   ALERT_STATUSES,
   MAX_REFERENCE_CONCURRENCY,
   MAX_REFERENCED_DOIS,
-  CROSSREF_USER_AGENT,
+  getCrossrefUserAgent,
   CROSSREF_RATE_LIMIT_MS,
   CROSSREF_MAX_RETRIES,
   UNKNOWN_CACHE_TTL_MS,
@@ -31,7 +31,7 @@ async function fetchWithBackoff(url: string): Promise<Response | null> {
     try {
       const res = await fetch(url, {
         cache: "no-store",
-        headers: { "User-Agent": CROSSREF_USER_AGENT },
+        headers: { "User-Agent": getCrossrefUserAgent() },
       });
       if (res.status !== 429) return res;
       const retryAfter = res.headers.get("retry-after");

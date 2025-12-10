@@ -9,12 +9,24 @@ export const ALERT_STATUSES: Set<ArticleStatus> = new Set([
 export const MAX_REFERENCE_CONCURRENCY = 4;
 export const MAX_REFERENCED_DOIS = 10000;
 export const SUPPORT_URL = "https://Luca-Dellanna.com/contact";
+export const DONATE_URL = "https://Luca-Dellanna.com/donate";
+export const ABOUT_URL = "https://Luca-Dellanna.com/retraction-alert";
+export const STORE_URL =
+  "https://chromewebstore.google.com/detail/retraction-alert/lcpdiodcbbmlgindmohlahaeglflacjb";
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const UNKNOWN_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for unknown results
-export const CROSSREF_USER_AGENT =
-  "RetractionAlert/0.3.0 (https://Luca-Dellanna.com/contact)";
 export const CROSSREF_RATE_LIMIT_MS = 100; // ~10 req/s spacing
 export const CROSSREF_MAX_RETRIES = 2;
+
+export function getCrossrefUserAgent(): string {
+  const version =
+    typeof chrome !== "undefined" &&
+    chrome.runtime?.getManifest &&
+    chrome.runtime.getManifest()?.version
+      ? chrome.runtime.getManifest().version
+      : "0.0.0";
+  return `RetractionAlert/${version} (${SUPPORT_URL})`;
+}
 
 export const NEWS_CONTACTS: Record<string, string> = {
   "wsj.com": "wsjcontact@wsj.com",
@@ -132,7 +144,7 @@ export const SCIENCE_HOSTS = [
   "openreview.net",
   "icml.cc",
   "ecva.net",
-  "cdc.gov"
+  "cdc.gov",
 ];
 
 export const NEWS_HOSTS = [

@@ -1,5 +1,10 @@
 import { AlertEntry, ArticleStatus } from "../types";
-import { SUPPORT_URL } from "../constants";
+import {
+  SUPPORT_URL,
+  DONATE_URL,
+  ABOUT_URL,
+  STORE_URL,
+} from "../constants";
 import { logDebug } from "../log";
 import { clearCaches } from "../cache";
 
@@ -79,6 +84,94 @@ export function setWrapperVisibility(visible: boolean): void {
   recalcPadding();
 }
 
+function openAboutModal(): void {
+  const existing = document.getElementById("retraction-alert-about-modal");
+  if (existing) {
+    existing.remove();
+  }
+  const overlay = document.createElement("div");
+  overlay.id = "retraction-alert-about-modal";
+  overlay.style.position = "fixed";
+  overlay.style.top = "0";
+  overlay.style.left = "0";
+  overlay.style.right = "0";
+  overlay.style.bottom = "0";
+  overlay.style.backgroundColor = "rgba(0,0,0,0.45)";
+  overlay.style.zIndex = "999999";
+  overlay.style.display = "flex";
+  overlay.style.alignItems = "center";
+  overlay.style.justifyContent = "center";
+
+  const modal = document.createElement("div");
+  modal.style.background = "#fff";
+  modal.style.color = "#222";
+  modal.style.borderRadius = "10px";
+  modal.style.padding = "16px 18px";
+  modal.style.minWidth = "280px";
+  modal.style.maxWidth = "360px";
+  modal.style.boxShadow = "0 8px 24px rgba(0,0,0,0.25)";
+  modal.style.fontFamily = "Arial, sans-serif";
+  modal.style.textAlign = "center";
+
+  const title = document.createElement("div");
+  title.textContent = "Retraction Alert";
+  title.style.fontWeight = "bold";
+  title.style.fontSize = "16px";
+  title.style.marginBottom = "8px";
+  modal.appendChild(title);
+
+  const desc = document.createElement("div");
+  desc.textContent = "Learn more or support the extension:";
+  desc.style.fontSize = "13px";
+  desc.style.marginBottom = "12px";
+  modal.appendChild(desc);
+
+  const links = document.createElement("div");
+  links.style.display = "flex";
+  links.style.flexDirection = "column";
+  links.style.gap = "8px";
+
+  const linkBtn = (label: string, href: string) => {
+    const a = document.createElement("a");
+    a.textContent = label;
+    a.href = href;
+    a.target = "_blank";
+    a.rel = "noreferrer noopener";
+    a.style.background = COLORS.link;
+    a.style.color = "#4e342e";
+    a.style.padding = "8px 10px";
+    a.style.borderRadius = "8px";
+    a.style.fontWeight = "bold";
+    a.style.textDecoration = "none";
+    a.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+    return a;
+  };
+
+  links.appendChild(linkBtn("Chrome extension page", STORE_URL));
+  links.appendChild(linkBtn("Support via donation", DONATE_URL));
+  modal.appendChild(links);
+
+  const close = document.createElement("button");
+  close.textContent = "Close";
+  close.style.marginTop = "14px";
+  close.style.border = "none";
+  close.style.cursor = "pointer";
+  close.style.background = "#eee";
+  close.style.color = "#222";
+  close.style.padding = "6px 10px";
+  close.style.borderRadius = "6px";
+  close.style.fontWeight = "bold";
+  close.addEventListener("click", () => overlay.remove());
+  modal.appendChild(close);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
 export function ensureBanners(): {
   wrapper: HTMLDivElement;
   article: HTMLDivElement;
@@ -111,9 +204,8 @@ export function ensureBanners(): {
   const makeBanner = (): HTMLDivElement => {
     const div = document.createElement("div");
     div.style.minHeight = "44px";
-    div.style.display = "grid";
-    div.style.gridTemplateColumns = "1fr auto";
-    div.style.alignItems = "center";
+    div.style.display = "flex";
+    div.style.alignItems = "stretch";
     div.style.padding = "0";
     div.style.fontFamily = "Arial, sans-serif";
     div.style.fontSize = "14px";
@@ -128,15 +220,19 @@ export function ensureBanners(): {
     content.style.gap = "4px";
     content.style.alignItems = "center";
     content.style.padding = "10px 14px";
+    content.style.flex = "1";
     div.appendChild(content);
 
     const actions = document.createElement("div");
     actions.id = "retraction-alert-actions";
     actions.style.display = "flex";
-    actions.style.gap = "8px";
-    actions.style.alignItems = "center";
-    actions.style.justifyContent = "flex-end";
+    actions.style.flexDirection = "column";
+    actions.style.gap = "6px";
+    actions.style.alignItems = "flex-end";
+    actions.style.justifyContent = "center";
     actions.style.padding = "10px 14px";
+    actions.style.backgroundColor = "inherit";
+    actions.style.alignSelf = "stretch";
 
     const makeLinkButton = (label: string, href: string, title?: string) => {
       const a = document.createElement("a");
@@ -156,7 +252,24 @@ export function ensureBanners(): {
     };
 
     const bugBtn = makeLinkButton("Report bug", "https://Luca-Dellanna.com/contact", "Report an issue");
-    const infoBtn = makeLinkButton("About", "https://Luca-Dellanna.com/retraction-alert", "About Retraction Alert");
+    bugBtn.style.width = "100%";
+
+    const infoBtn = document.createElement("button");
+    infoBtn.textContent = "About";
+    infoBtn.style.background = COLORS.link;
+    infoBtn.style.color = "#4e342e";
+    infoBtn.style.padding = "6px 10px";
+    infoBtn.style.borderRadius = "6px";
+    infoBtn.style.fontWeight = "bold";
+    infoBtn.style.textDecoration = "none";
+    infoBtn.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+    infoBtn.style.border = "none";
+    infoBtn.style.cursor = "pointer";
+    infoBtn.style.width = "100%";
+    infoBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      openAboutModal();
+    });
     actions.appendChild(bugBtn);
     actions.appendChild(infoBtn);
     div.appendChild(actions);
@@ -268,6 +381,11 @@ export function updateBanner(
     lineColors?: BannerLineColor[];
   }
 ): void {
+  const parent = banner.parentElement as HTMLElement | null;
+  if (parent) {
+    parent.style.backgroundColor = options.bg;
+    parent.style.color = options.textColor ?? COLORS.textLight;
+  }
   banner.style.backgroundColor = options.bg;
   banner.style.color = options.textColor ?? COLORS.textLight;
   banner.style.display = "flex";

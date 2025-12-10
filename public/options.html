@@ -27,6 +27,7 @@
         gap: 8px;
         align-items: center;
         margin: 8px 0;
+        flex-wrap: wrap;
       }
       button {
         background: #8b0000;
@@ -40,6 +41,10 @@
       button.secondary {
         background: #f1f5f9;
         color: #111827;
+      }
+      button.full {
+        width: 100%;
+        text-align: center;
       }
       button:disabled {
         opacity: 0.6;
@@ -62,10 +67,14 @@
     <h1>Retraction Alert</h1>
     <div class="subtle" id="version">Version</div>
 
-    <div class="row">
-      <button id="clear">Clear cache</button>
-      <button class="secondary" id="support">Support</button>
+    <div class="row wrap">
+      <button class="secondary" id="support">Report a bug</button>
+      <button class="secondary" id="donate">Donate</button>
       <button class="secondary" id="privacy">Privacy</button>
+    </div>
+
+    <div class="row">
+      <button id="clear" class="full">Clear cache</button>
     </div>
     <div id="status">Cache status: not cleared yet.</div>
 

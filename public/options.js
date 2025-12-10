@@ -1,6 +1,7 @@
 const statusEl = document.getElementById("status");
 const clearBtn = document.getElementById("clear");
 const supportBtn = document.getElementById("support");
+const donateBtn = document.getElementById("donate");
 const privacyBtn = document.getElementById("privacy");
 const versionEl = document.getElementById("version");
 
@@ -32,6 +33,10 @@ clearBtn.addEventListener("click", async () => {
 
 supportBtn.addEventListener("click", () => {
   window.open("https://Luca-Dellanna.com/contact", "_blank", "noreferrer");
+});
+
+donateBtn.addEventListener("click", () => {
+  window.open("https://Luca-Dellanna.com/donate", "_blank", "noreferrer");
 });
 
 privacyBtn.addEventListener("click", () => {
