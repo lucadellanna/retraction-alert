@@ -3,15 +3,13 @@
 Warns you when the current article—or any of its cited papers—has been retracted, withdrawn, or flagged with an expression of concern.
 
 ## What it does
-- Automatically runs on top scholarly venues and major news sites worldwide (e.g., doi.org, PubMed, CDC, Nature/Science/Lancet/NEJM/JAMA, PNAS, CVPR/ICCV/NeurIPS/ICLR/ICML, Springer/Wiley/Elsevier, arXiv/bioRxiv/medRxiv, and leading global news outlets).
+- Automatically runs on top scholarly venues and major news sites worldwide (e.g., doi.org, PubMed, CDC, Nature/Science/Lancet/NEJM/JAMA/PNAS, CVPR/ICCV/NeurIPS/ICLR/ICML, Springer/Wiley/Elsevier, arXiv/bioRxiv/medRxiv, and leading global news outlets such as NYT/Guardian/BBC/CNN/Reuters/Fox/Bloomberg).
 - Extracts the DOI/PMID from the page (meta tags, URL patterns, or doi.org itself).
 - Queries Crossref (Retraction Watch/assertions/update-to) to determine status.
-- If the current article is retracted/withdrawn/concerned, shows a red banner.
-- Fetches Crossref references and checks each cited DOI:
-  - Shows a yellow progress bar while scanning.
-  - Shows a red banner if any cited papers are flagged (links included).
-  - Shows a green banner if all checked citations are clear.
-- On flagged citations, shows an “Email corresponding author” button (if an email is discoverable on the page) to draft a mailto with the retracted references listed.
+- Shows a unified banner with inline progress; red if the article or citations are flagged, green if clear, neutral if unknown.
+- Fetches references and checks each cited DOI; highlights sentences containing flagged citations (articles/news/LinkedIn).
+- On flagged citations, shows an “Email corresponding author” button when an email is discoverable; link is prefilled with flagged references.
+- ORCID/Scholar support: detects Scholar profiles, links to ORCID, and runs checks on ORCID works and their cited works.
 
 ## Project structure
 - `public/manifest.json` – MV3 config, host matches, permissions.
