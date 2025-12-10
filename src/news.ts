@@ -126,8 +126,12 @@ export async function handleNewsPage(
   // as science so we run the article workflow instead of the news flow.
   if (isScienceHost) return false;
 
-  // Hide the article banner for news pages to avoid an empty/transparent bar.
+  // Hide the article banner content for news pages to avoid a double bar.
   articleBanner.style.display = "none";
+  // Also hide the article banner container (parent) to prevent empty space.
+  if (articleBanner.parentElement) {
+    (articleBanner.parentElement as HTMLElement).style.display = "none";
+  }
 
   const scanAndRender = async (): Promise<boolean> => {
     logDebug("news scan start", { hostname });

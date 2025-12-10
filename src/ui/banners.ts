@@ -87,8 +87,8 @@ export function ensureBanners(): {
   if (STATE.wrapper && STATE.articleBanner && STATE.citationsBanner) {
     return {
       wrapper: STATE.wrapper,
-      article: STATE.articleBanner,
-      citations: STATE.citationsBanner,
+      article: STATE.articleBanner.querySelector("div") as HTMLDivElement,
+      citations: STATE.citationsBanner.querySelector("div") as HTMLDivElement,
     };
   }
 
@@ -111,17 +111,58 @@ export function ensureBanners(): {
   const makeBanner = (): HTMLDivElement => {
     const div = document.createElement("div");
     div.style.minHeight = "44px";
-    div.style.display = "flex";
-    div.style.flexDirection = "column";
-    div.style.gap = "4px";
+    div.style.display = "grid";
+    div.style.gridTemplateColumns = "1fr auto";
     div.style.alignItems = "center";
-    div.style.padding = "10px 14px";
+    div.style.padding = "0";
     div.style.fontFamily = "Arial, sans-serif";
     div.style.fontSize = "14px";
     div.style.fontWeight = "bold";
     div.style.color = COLORS.textLight;
     div.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
     div.style.borderRadius = "0";
+
+    const content = document.createElement("div");
+    content.style.display = "flex";
+    content.style.flexDirection = "column";
+    content.style.gap = "4px";
+    content.style.alignItems = "center";
+    content.style.padding = "10px 14px";
+    div.appendChild(content);
+
+    const actions = document.createElement("div");
+    actions.id = "retraction-alert-actions";
+    actions.style.display = "flex";
+    actions.style.gap = "8px";
+    actions.style.alignItems = "center";
+    actions.style.justifyContent = "flex-end";
+    actions.style.padding = "10px 14px";
+
+    const makeLinkButton = (label: string, href: string, title?: string) => {
+      const a = document.createElement("a");
+      a.textContent = label;
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noreferrer noopener";
+      a.style.background = COLORS.link;
+      a.style.color = "#4e342e";
+      a.style.padding = "6px 10px";
+      a.style.borderRadius = "6px";
+      a.style.fontWeight = "bold";
+      a.style.textDecoration = "none";
+      a.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+      if (title) a.title = title;
+      return a;
+    };
+
+    const bugBtn = makeLinkButton("Report bug", "https://Luca-Dellanna.com/contact", "Report an issue");
+    const infoBtn = makeLinkButton("About", "https://Luca-Dellanna.com/retraction-alert", "About Retraction Alert");
+    actions.appendChild(bugBtn);
+    actions.appendChild(infoBtn);
+    div.appendChild(actions);
+
+    (div as unknown as { content?: HTMLElement }).content = content;
+    (div as unknown as { actions?: HTMLElement }).actions = actions;
     return div;
   };
 
@@ -137,7 +178,11 @@ export function ensureBanners(): {
 
   recalcPadding();
 
-  return { wrapper, article, citations };
+  return {
+    wrapper,
+    article: article.querySelector("div") as HTMLDivElement,
+    citations: citations.querySelector("div") as HTMLDivElement,
+  };
 }
 
 export function ensureReferenceProgressBanner(): HTMLDivElement {
