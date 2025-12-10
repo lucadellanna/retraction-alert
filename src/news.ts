@@ -22,7 +22,11 @@ export async function handleNewsPage(
   citations: HTMLDivElement
 ): Promise<boolean> {
   const isNews = NEWS_HOSTS.some((h) => hostname.includes(h));
+  const isScienceHost = SCIENCE_HOSTS.some((h) => hostname.includes(h));
   if (!isNews) return false;
+  // If a host is classified as both news and science (e.g., nih.gov), treat it
+  // as science so we run the article workflow instead of the news flow.
+  if (isScienceHost) return false;
 
   const anchors = Array.from(
     document.querySelectorAll("a[href]")
