@@ -418,7 +418,8 @@ export async function handleArticlePage(
     mailto = createEmailLink(
       id,
       correspondingEmail ?? "",
-      referenceResult.alerts
+      referenceResult.alerts,
+      location.href
     );
   }
 

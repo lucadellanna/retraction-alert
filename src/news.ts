@@ -2,7 +2,6 @@ import { AlertEntry, ArticleStatus } from "./types";
 import {
   ALERT_STATUSES,
   NEWS_CONTACTS,
-  SUPPORT_URL,
   SCIENCE_HOSTS,
   NEWS_HOSTS,
 } from "./constants";
@@ -10,6 +9,7 @@ import {
   countsSummary,
   updateBanner,
   setWrapperVisibility,
+  statusLabel,
 } from "./ui/banners";
 import { COLORS } from "./ui/colors";
 import { checkStatus, checkReferences } from "./crossref";
@@ -247,18 +247,21 @@ export async function handleNewsPage(
         Object.entries(NEWS_CONTACTS).find(([host]) =>
           newsDomain.includes(host)
         )?.[1] ?? "";
-      const subject = `Retracted/flagged study linked on ${newsDomain}`;
+      const subject = `Citation check: flagged study links on ${newsDomain}`;
       const bodyLines = [
-        `Hi,`,
+        "Hello,",
         "",
-        `On ${newsDomain} page: ${location.href}`,
-        `These linked studies appear retracted/flagged:`,
+        "I noticed a page of yours links to studies that are marked retracted/flagged. Sharing details in case you want to review the references.",
+        "",
+        `Page: ${location.href}`,
+        "",
+        "Flagged links:",
         ...allAlerts.map(
-          (r) => `- ${r.title || r.id} (${r.status}): https://doi.org/${r.id}`
+          (r) =>
+            `- ${r.title || r.id} — ${statusLabel(r.status)}: https://doi.org/${r.id}`
         ),
         "",
-        "Sent via Retraction Alert",
-        SUPPORT_URL,
+        "Sent via Retraction Alert (data via Crossref/Retraction Watch where available).",
       ];
       const body = bodyLines.join("\n");
       mailto = `mailto:${encodeURIComponent(

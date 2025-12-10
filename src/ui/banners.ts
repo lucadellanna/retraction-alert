@@ -1,17 +1,13 @@
+import { ABOUT_URL, DONATE_URL, STORE_URL } from "../constants";
 import { AlertEntry, ArticleStatus } from "../types";
-import {
-  SUPPORT_URL,
-  DONATE_URL,
-  ABOUT_URL,
-  STORE_URL,
-} from "../constants";
-import { logDebug } from "../log";
+
+import { COLORS } from "./colors";
 import { clearCaches } from "../cache";
+import { logDebug } from "../log";
 
 export type AlertItem = AlertEntry;
 export type BannerAction = { label: string; href: string; title?: string };
 type BannerLineColor = string | undefined;
-import { COLORS } from "./colors";
 
 const STATE = {
   basePadding: 0,
@@ -258,7 +254,11 @@ export function ensureBanners(): {
       return a;
     };
 
-    const bugBtn = makeLinkButton("Report bug", "https://Luca-Dellanna.com/contact", "Report an issue");
+    const bugBtn = makeLinkButton(
+      "Report bug",
+      "https://Luca-Dellanna.com/contact",
+      "Report an issue"
+    );
 
     const infoBtn = document.createElement("button");
     infoBtn.textContent = "About";
@@ -470,25 +470,38 @@ export function countsSummary(
 export function createEmailLink(
   id: string,
   target: string | undefined,
-  alerts: AlertItem[]
+  alerts: AlertItem[],
+  pageUrl?: string
 ): string {
-  const subject = encodeURIComponent(`Retracted/flagged research noticed`);
+  const subject = encodeURIComponent(
+    "Citation check: flagged references in your article"
+  );
   const lines: string[] = [];
-  lines.push(`Article: ${id}`);
+  lines.push("Hello,");
+  lines.push("");
+  lines.push(
+    "I noticed your paper contains citations that are marked retracted/flagged. Sharing details in case you want to review the references."
+  );
+  lines.push("");
+  lines.push(`Article: ${pageUrl ?? id}`);
+  if (pageUrl) {
+    lines.push(`DOI: https://doi.org/${id}`);
+  }
   lines.push("");
   if (alerts.length) {
     lines.push("Flagged citations:");
     for (const alert of alerts) {
       lines.push(
-        `- ${alert.title ? `${alert.title} (${alert.id})` : alert.id} [${statusLabel(
-          alert.status
-        )}]`
+        `- ${
+          alert.title ? `${alert.title} (${alert.id})` : alert.id
+        } — ${statusLabel(alert.status)}`
       );
     }
   }
   lines.push("");
-  lines.push("Via Retraction Alert.");
-  lines.push(SUPPORT_URL);
+  lines.push(
+    "Source: Retraction Alert (data via Crossref/Retraction Watch where available)."
+  );
   const body = encodeURIComponent(lines.join("\n"));
   return `mailto:${target ?? ""}?subject=${subject}&body=${body}`;
 }
