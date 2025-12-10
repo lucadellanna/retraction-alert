@@ -45,3 +45,6 @@ Alerts when the current article—or any of its cited papers—is retracted/with
 **Privacy policy URL**  
 Point to `privacy.md` in this repo (e.g., raw GitHub URL after publishing):  
 `https://github.com/lucadellanna/retraction-alert/blob/main/privacy.md`
+
+**Storage justification**  
+Uses `chrome.storage.local` only as a short-lived cache of Crossref responses (article IDs and status results) so the same page/references are not re-fetched repeatedly. No personal data, browsing history, or identifiers are stored. Cache entries expire automatically; failures fall back to memory-only cache.
