@@ -3,6 +3,8 @@ import {
   ALERT_STATUSES,
   NEWS_CONTACTS,
   SUPPORT_URL,
+  SCIENCE_HOSTS,
+  NEWS_HOSTS,
 } from "./constants";
 import {
   countsSummary,
@@ -14,62 +16,6 @@ import { checkStatus, checkReferences } from "./crossref";
 import { extractDoiFromHref, mapPublisherUrlToDoi } from "./doi";
 import { logDebug } from "./log";
 import { createProgressBar, ProgressHandle } from "./ui/progress";
-
-export const NEWS_HOSTS = [
-  "abc.net.au",
-  "elpais.com",
-  "elmundo.es",
-  "lavanguardia.com",
-  "faz.net",
-  "globo.com",
-  "corriere.it",
-  "lemonde.fr",
-  "lefigaro.fr",
-  "lastampa.it",
-  "repubblica.it",
-  "bild.de",
-  "zeit.de",
-  "spiegel.de",
-  "theage.com.au",
-  "telegraph.co.uk",
-  "independent.co.uk",
-  "thetimes.co.uk",
-  "wsj.com",
-  "theguardian.com",
-  "nytimes.com",
-  "washingtonpost.com",
-  "economist.com",
-  "ft.com",
-  "bbc.com",
-  "reuters.com",
-  "latimes.com",
-  "nbcnews.com",
-  "cnn.com",
-];
-
-export const SCIENCE_HOSTS = [
-  "doi.org",
-  "nature.com",
-  "thelancet.com",
-  "science.org",
-  "sciencedirect.com",
-  "link.springer.com",
-  "onlinelibrary.wiley.com",
-  "tandfonline.com",
-  "jamanetwork.com",
-  "nejm.org",
-  "bmj.com",
-  "journals.plos.org",
-  "pubs.acs.org",
-  "ieeexplore.ieee.org",
-  "dl.acm.org",
-  "arxiv.org",
-  "biorxiv.org",
-  "medrxiv.org",
-  "academic.oup.com",
-  "psycnet.apa.org",
-  "cambridge.org",
-];
 
 export async function handleNewsPage(
   hostname: string,
