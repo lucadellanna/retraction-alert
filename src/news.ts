@@ -18,6 +18,102 @@ import { logDebug } from "./log";
 import { createProgressBar, ProgressHandle } from "./ui/progress";
 import { highlightSentence } from "./ui/highlight";
 
+function collectNumberToDoi(): Map<string, string> {
+  const numberToDoi = new Map<string, string>();
+  const candidates = Array.from(
+    document.querySelectorAll<HTMLElement>("li, p, div, section, article")
+  ).filter((el) => el.textContent?.match(/\[\s*\d{1,3}\s*\]/));
+
+  candidates.forEach((el) => {
+    const anchors = Array.from(el.querySelectorAll<HTMLAnchorElement>("a[href]"));
+    let doi: string | null = null;
+    for (const a of anchors) {
+      const href = a.getAttribute("href") || a.href || "";
+      doi =
+        extractDoiFromHref(href) ||
+        mapPublisherUrlToDoi(href) ||
+        (() => {
+          const text = a.textContent?.trim() || "";
+          const m = text.match(/\b10\.[^\s)]+/i);
+          return m?.[0]?.replace(/[).,]+$/, "") || null;
+        })();
+      if (doi) break;
+    }
+    if (!doi) return;
+    const norm = doi.toLowerCase();
+    const first = (el.textContent || "").match(/\[\s*(\d{1,3})\s*\]/);
+    if (first?.[1]) numberToDoi.set(first[1], norm);
+  });
+
+  return numberToDoi;
+}
+
+function highlightBracketCitations(
+  alertDois: Set<string>,
+  numberToDoi: Map<string, string>
+): void {
+  if (!alertDois.size || !numberToDoi.size) return;
+
+  const refSelectors = [
+    "[data-section='references']",
+    "#references",
+    ".references",
+    ".ref-list",
+    "[role='doc-bibliography']",
+  ];
+  const isInReferences = (el: Element) =>
+    refSelectors.some((sel) => el.closest(sel));
+
+  const blocks =
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        "p, li, blockquote, .article-paragraph"
+      )
+    ) || [];
+  const targets = blocks.length ? blocks : [document.body];
+
+    targets.forEach((block) => {
+      if (isInReferences(block)) return;
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      const nodes: Text[] = [];
+      let n: Node | null = walker.nextNode();
+      while (n) {
+        if (n.nodeType === Node.TEXT_NODE) nodes.push(n as Text);
+        n = walker.nextNode();
+      }
+
+      nodes.forEach((textNode) => {
+        const text = textNode.textContent || "";
+        if (!text.includes("[")) return;
+        const regex = /\[\s*(\d{1,3})\s*\]/g;
+        let match: RegExpExecArray | null;
+        const spans: HTMLElement[] = [];
+        let lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        while ((match = regex.exec(text))) {
+          const num = match[1];
+          const doi = numberToDoi.get(num);
+          if (!doi || !alertDois.has(doi.toLowerCase())) continue;
+          const before = text.slice(lastIndex, match.index);
+          if (before) frag.appendChild(document.createTextNode(before));
+          const span = document.createElement("span");
+          span.textContent = match[0];
+          span.dataset.raRefNum = num;
+        frag.appendChild(span);
+        spans.push(span);
+        lastIndex = match.index + match[0].length;
+      }
+      if (!spans.length) return;
+      const after = text.slice(lastIndex);
+      if (after) frag.appendChild(document.createTextNode(after));
+      textNode.replaceWith(frag);
+      spans.forEach((span) => {
+        highlightSentence(block);
+      });
+    });
+  });
+}
+
 export async function handleNewsPage(
   hostname: string,
   articleBanner: HTMLDivElement,
@@ -183,7 +279,7 @@ export async function handleNewsPage(
       alerts: allAlerts,
     });
 
-    // Highlight sentences containing flagged links
+    // Highlight sentences containing flagged links or numeric citations.
     const alertDois = new Set(allAlerts.map((a) => a.id.toLowerCase()));
     if (alertDois.size) {
       const anchorsAll = Array.from(
@@ -195,9 +291,12 @@ export async function handleNewsPage(
           extractDoiFromHref(href)?.toLowerCase() ||
           mapPublisherUrlToDoi(href)?.toLowerCase();
         if (doi && alertDois.has(doi)) {
-          highlightSentence(a);
+          const target = a.closest("p, li, div") || a;
+          highlightSentence(target);
         }
       });
+      const numberToDoi = collectNumberToDoi();
+      highlightBracketCitations(alertDois, numberToDoi);
     }
 
     progress?.update(

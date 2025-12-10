@@ -25,11 +25,24 @@ function referenceRoots(): HTMLElement[] {
   ].filter(Boolean) as HTMLElement[];
 }
 
-function buildReferenceIdToDoiMap(): Map<string, string> {
-  const map = new Map<string, string>();
-  referenceRoots().forEach((root) => {
-    const entries = Array.from(root.querySelectorAll<HTMLElement>("[id]"));
-    entries.forEach((entry) => {
+function buildReferenceMaps(): {
+  idToDoi: Map<string, string>;
+  numberToDoi: Map<string, string>;
+} {
+  const idToDoi = new Map<string, string>();
+  const numberToDoi = new Map<string, string>();
+
+  const record = (entry: Element, doi: string) => {
+    const norm = doi.toLowerCase();
+    if (entry.id) idToDoi.set(entry.id.toLowerCase(), norm);
+    const firstNum = (entry.textContent || "").match(/\[\s*(\d{1,3})\s*\]/);
+    if (firstNum?.[1]) {
+      numberToDoi.set(firstNum[1], norm);
+    }
+  };
+
+  const scrapeEntries = (entries: Iterable<HTMLElement>) => {
+    for (const entry of entries) {
       let doi: string | null = null;
       const anchors = Array.from(entry.querySelectorAll<HTMLAnchorElement>("a[href]"));
       for (const a of anchors) {
@@ -49,18 +62,33 @@ function buildReferenceIdToDoiMap(): Map<string, string> {
         const match = text.match(/\b10\.[^\s)]+/i);
         if (match?.[0]) doi = match[0].replace(/[).,]+$/, "");
       }
-      if (doi && entry.id) {
-        map.set(entry.id.toLowerCase(), doi.toLowerCase());
-      }
-    });
+      if (doi) record(entry, doi);
+    }
+  };
+
+  const refRootsList = referenceRoots();
+  refRootsList.forEach((root) => {
+    const entries = Array.from(
+      root.querySelectorAll<HTMLElement>("[id], li, p, div")
+    );
+    scrapeEntries(entries);
   });
-  return map;
+
+  // Fallback: any element in the document that contains both a DOI link and a numeric marker.
+  if (idToDoi.size === 0 && numberToDoi.size === 0) {
+    const fallbackEntries = Array.from(
+      document.querySelectorAll<HTMLElement>("li, p, div, section, article")
+    ).filter((el) => el.textContent?.match(/\[\d{1,3}\]/));
+    scrapeEntries(fallbackEntries);
+  }
+
+  return { idToDoi, numberToDoi };
 }
 
 function highlightCitingParagraphs(alerts: { id: string }[]): void {
   if (!alerts.length) return;
   const alertDois = new Set(alerts.map((a) => a.id.toLowerCase()));
-  const refMap = buildReferenceIdToDoiMap();
+  const { idToDoi: refMap, numberToDoi } = buildReferenceMaps();
   const refRoots = referenceRoots();
   const isInReferences = (el: Element) =>
     refRoots.some((root) => root.contains(el));
@@ -95,32 +123,83 @@ function highlightCitingParagraphs(alerts: { id: string }[]): void {
   const highlighted = new Set<HTMLElement>();
   const highlightSentenceSafe = (el: Element | null) => {
     if (!el) return;
-    if (isInReferences(el)) return;
-    if (highlighted.has(el as HTMLElement)) return;
-    highlightSentence(el);
-    highlighted.add(el as HTMLElement);
+    const target =
+      (el as HTMLElement).closest("p, li, div") || (el as HTMLElement);
+    if (isInReferences(target)) return;
+    if (highlighted.has(target)) return;
+    highlightSentence(target);
+    highlighted.add(target);
+  };
+
+  const wrapBracketCitations = (): void => {
+    if (!numberToDoi.size) return;
+    const blocks =
+      Array.from(
+        document.querySelectorAll<HTMLElement>("p, li, blockquote")
+      ) || [];
+    const targets = blocks.length ? blocks : [document.body];
+
+    targets.forEach((block) => {
+      if (isInReferences(block)) return;
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      const nodes: Text[] = [];
+      let n: Node | null = walker.nextNode();
+      while (n) {
+        if (n.nodeType === Node.TEXT_NODE) nodes.push(n as Text);
+        n = walker.nextNode();
+      }
+      nodes.forEach((textNode) => {
+        const text = textNode.textContent || "";
+        if (!text.includes("[")) return;
+        const regex = /\[\s*(\d{1,3})\s*\]/g;
+        let match: RegExpExecArray | null;
+        const spans: HTMLElement[] = [];
+        let lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        while ((match = regex.exec(text))) {
+          const num = match[1];
+          const doi = numberToDoi.get(num);
+          if (!doi || !alertDois.has(doi.toLowerCase())) continue;
+          const before = text.slice(lastIndex, match.index);
+          if (before) frag.appendChild(document.createTextNode(before));
+          const span = document.createElement("span");
+          span.textContent = match[0];
+          span.dataset.raRefNum = num;
+          frag.appendChild(span);
+          spans.push(span);
+          lastIndex = match.index + match[0].length;
+        }
+        if (!spans.length) return;
+        const after = text.slice(lastIndex);
+        if (after) frag.appendChild(document.createTextNode(after));
+        textNode.replaceWith(frag);
+        spans.forEach(() => highlightSentenceSafe(block));
+      });
+    });
   };
 
   // Direct DOI mentions in the article body
   const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"));
-  anchors.forEach((a) => {
-    const href = a.getAttribute("href") || a.href;
-    if (!href || isInReferences(a)) return;
-    const doi =
-      extractDoiFromHref(href)?.toLowerCase() ||
-      mapPublisherUrlToDoi(href)?.toLowerCase();
-    if (doi && alertDois.has(doi)) {
-      highlightSentenceSafe(a);
-      return;
-    }
-    const refId = refIdForInline(a);
-    if (refId) {
-      const mapped = refMap.get(refId);
-      if (mapped && alertDois.has(mapped)) {
-        highlightSentenceSafe(a);
+    anchors.forEach((a) => {
+      const href = a.getAttribute("href") || a.href;
+      if (!href || isInReferences(a)) return;
+      const doi =
+        extractDoiFromHref(href)?.toLowerCase() ||
+        mapPublisherUrlToDoi(href)?.toLowerCase();
+      if (doi && alertDois.has(doi)) {
+        const target = a.closest("li, p, div") || a;
+        highlightSentenceSafe(target);
+        return;
       }
-    }
-  });
+      const refId = refIdForInline(a);
+      if (refId) {
+        const mapped = refMap.get(refId);
+        if (mapped && alertDois.has(mapped)) {
+          const target = a.closest("li, p, div") || a;
+          highlightSentenceSafe(target);
+        }
+      }
+    });
 
   // Inline citation links pointing to reference list items
   const citationAnchors = Array.from(
@@ -134,9 +213,13 @@ function highlightCitingParagraphs(alerts: { id: string }[]): void {
     if (!rid) return;
     const doi = refMap.get(rid.toLowerCase());
     if (doi && alertDois.has(doi)) {
-      highlightSentenceSafe(a);
+      const target = a.closest("li, p, div") || a;
+      highlightSentenceSafe(target);
     }
   });
+
+  // Plain-text numeric citations like [29] without anchors.
+  wrapBracketCitations();
 }
 
 function extractNatureDoiFromPath(loc: Location): string | null {
