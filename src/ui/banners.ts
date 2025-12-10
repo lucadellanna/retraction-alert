@@ -228,11 +228,11 @@ export function ensureBanners(): {
     actions.style.display = "flex";
     actions.style.flexDirection = "column";
     actions.style.gap = "6px";
-    actions.style.alignItems = "flex-end";
+    actions.style.alignItems = "stretch";
     actions.style.justifyContent = "center";
-    actions.style.padding = "10px 14px";
+    actions.style.padding = "8px 12px";
     actions.style.backgroundColor = "inherit";
-    actions.style.alignSelf = "stretch";
+    actions.style.minWidth = "170px";
 
     const makeLinkButton = (label: string, href: string, title?: string) => {
       const a = document.createElement("a");
@@ -242,25 +242,28 @@ export function ensureBanners(): {
       a.rel = "noreferrer noopener";
       a.style.background = COLORS.link;
       a.style.color = "#4e342e";
-      a.style.padding = "6px 10px";
+      a.style.padding = "6px 8px";
       a.style.borderRadius = "6px";
       a.style.fontWeight = "bold";
+      a.style.fontSize = "13px";
       a.style.textDecoration = "none";
       a.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
+      a.style.width = "100%";
+      a.style.textAlign = "center";
       if (title) a.title = title;
       return a;
     };
 
     const bugBtn = makeLinkButton("Report bug", "https://Luca-Dellanna.com/contact", "Report an issue");
-    bugBtn.style.width = "100%";
 
     const infoBtn = document.createElement("button");
     infoBtn.textContent = "About";
     infoBtn.style.background = COLORS.link;
     infoBtn.style.color = "#4e342e";
-    infoBtn.style.padding = "6px 10px";
+    infoBtn.style.padding = "6px 8px";
     infoBtn.style.borderRadius = "6px";
     infoBtn.style.fontWeight = "bold";
+    infoBtn.style.fontSize = "13px";
     infoBtn.style.textDecoration = "none";
     infoBtn.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2)";
     infoBtn.style.border = "none";
