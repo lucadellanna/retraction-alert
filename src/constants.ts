@@ -45,6 +45,7 @@ export const NEWS_CONTACTS: Record<string, string> = {
   "telegraph.co.uk": "",
   "independent.co.uk": "",
   "thetimes.co.uk": "",
+  "linkedin.com": "",
 };
 
 export const SCIENCE_HOSTS = [
@@ -104,4 +105,5 @@ export const NEWS_HOSTS = [
   "nbcnews.com",
   "cnn.com",
   "nih.gov",
+  "linkedin.com",
 ];

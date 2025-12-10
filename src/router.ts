@@ -20,6 +20,7 @@ function extractOrcidId(loc: Location): string | null {
 }
 
 export async function routePage(ctx: HandlerContext): Promise<boolean> {
+  logDebug("Routing page", { host: ctx.location.hostname, href: ctx.location.href });
   // Scholar profile (passive banner only)
   const scholarHandled = await handleScholarProfile(
     ctx.article,

@@ -3,6 +3,7 @@ import { routePage } from "./router";
 import { logDebug } from "./log";
 
 async function run(): Promise<void> {
+  logDebug("Content script start", { href: location.href, host: location.hostname });
   const { article, citations } = ensureBanners();
   const handled = await routePage({
     article,
@@ -12,6 +13,8 @@ async function run(): Promise<void> {
   if (!handled) {
     setWrapperVisibility(false);
     logDebug("No handler matched this page");
+  } else {
+    logDebug("Handler matched", { href: location.href });
   }
 }
 
