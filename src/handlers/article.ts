@@ -17,6 +17,103 @@ import { logDebug } from "../log";
 import { createProgressBar, ProgressHandle } from "../ui/progress";
 import { getCache } from "../cache";
 
+function referenceRoots(): HTMLElement[] {
+  return [
+    document.querySelector('[data-section="references"]'),
+    document.querySelector("#reference-list"),
+    document.querySelector("#references"),
+    document.querySelector(".ref-list"),
+    document.querySelector(".references"),
+  ].filter(Boolean) as HTMLElement[];
+}
+
+function buildReferenceIdToDoiMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  referenceRoots().forEach((root) => {
+    const entries = Array.from(root.querySelectorAll<HTMLElement>("[id]"));
+    entries.forEach((entry) => {
+      let doi: string | null = null;
+      const anchors = Array.from(entry.querySelectorAll<HTMLAnchorElement>("a[href]"));
+      for (const a of anchors) {
+        const href = a.getAttribute("href") || a.href;
+        doi =
+          extractDoiFromHref(href) ||
+          mapPublisherUrlToDoi(href) ||
+          (() => {
+            const text = a.textContent?.trim() || "";
+            const match = text.match(/\b10\.[^\s)]+/i);
+            return match?.[0]?.replace(/[).,]+$/, "") || null;
+          })();
+        if (doi) break;
+      }
+      if (!doi) {
+        const text = entry.textContent || "";
+        const match = text.match(/\b10\.[^\s)]+/i);
+        if (match?.[0]) doi = match[0].replace(/[).,]+$/, "");
+      }
+      if (doi && entry.id) {
+        map.set(entry.id.toLowerCase(), doi.toLowerCase());
+      }
+    });
+  });
+  return map;
+}
+
+function highlightCitingParagraphs(alerts: { id: string }[]): void {
+  if (!alerts.length) return;
+  const alertDois = new Set(alerts.map((a) => a.id.toLowerCase()));
+  const refMap = buildReferenceIdToDoiMap();
+  const refRoots = referenceRoots();
+  const isInReferences = (el: Element) =>
+    refRoots.some((root) => root.contains(el));
+
+  const highlighted = new Set<HTMLElement>();
+  const highlight = (el: Element | null) => {
+    const target =
+      (el?.closest("p") as HTMLElement | null) ||
+      (el?.closest("div") as HTMLElement | null);
+    if (!target || highlighted.has(target) || isInReferences(target)) return;
+    target.style.backgroundColor = COLORS.danger;
+    target.style.color = COLORS.textLight;
+    target.style.padding = "4px";
+    target.style.borderRadius = "4px";
+    target.style.lineHeight = "1.5";
+    target.querySelectorAll("a").forEach((link) => {
+      (link as HTMLAnchorElement).style.color = COLORS.textLight;
+    });
+    highlighted.add(target);
+  };
+
+  // Direct DOI mentions in the article body
+  const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"));
+  anchors.forEach((a) => {
+    const href = a.getAttribute("href") || a.href;
+    if (!href || isInReferences(a)) return;
+    const doi =
+      extractDoiFromHref(href)?.toLowerCase() ||
+      mapPublisherUrlToDoi(href)?.toLowerCase();
+    if (doi && alertDois.has(doi)) {
+      highlight(a);
+    }
+  });
+
+  // Inline citation links pointing to reference list items
+  const citationAnchors = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href^='#'], a[data-rid], a[title*='reference'], sup a"));
+  citationAnchors.forEach((a) => {
+    if (isInReferences(a)) return;
+    const rid =
+      a.getAttribute("data-rid") ||
+      a.getAttribute("rid") ||
+      a.getAttribute("href")?.replace(/^#/, "") ||
+      "";
+    if (!rid) return;
+    const doi = refMap.get(rid.toLowerCase());
+    if (doi && alertDois.has(doi)) {
+      highlight(a);
+    }
+  });
+}
+
 function extractNatureDoiFromPath(loc: Location): string | null {
   if (!loc.hostname.endsWith("nature.com")) return null;
   const match = loc.pathname.match(/\/articles\/([^/?#]+)/);
@@ -229,6 +326,9 @@ export async function handleArticlePage(
         : finalLines,
     alerts: referenceResult.alerts,
   });
+  if (referenceResult.alerts.length) {
+    highlightCitingParagraphs(referenceResult.alerts);
+  }
   if (mailto && referenceResult.alerts.length) {
     const actions = document.createElement("div");
     actions.style.display = "flex";
