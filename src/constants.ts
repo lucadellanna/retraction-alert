@@ -9,7 +9,7 @@ export const ALERT_STATUSES: Set<ArticleStatus> = new Set([
 export const MAX_REFERENCE_CONCURRENCY = 4;
 export const MAX_REFERENCED_DOIS = 10000;
 export const SUPPORT_URL = "https://Luca-Dellanna.com/contact";
-export const DONATE_URL = "https://Luca-Dellanna.com/donate";
+export const DONATE_URL = "https://new.Luca-Dellanna.com/donate";
 export const ABOUT_URL = "https://Luca-Dellanna.com/retraction-alert";
 export const STORE_URL =
   "https://chromewebstore.google.com/detail/retraction-alert/lcpdiodcbbmlgindmohlahaeglflacjb";
