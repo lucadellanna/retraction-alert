@@ -309,6 +309,10 @@ export async function handleArticlePage(
     lines: ["Checking article status..."],
   });
   citationsBanner.style.display = "none";
+  const citationsParent = citationsBanner.parentElement as HTMLElement | null;
+  if (citationsParent) {
+    citationsParent.style.display = "none";
+  }
 
   const additionalPubmedDois =
     loc.hostname.endsWith("pubmed.ncbi.nlm.nih.gov")
