@@ -20,6 +20,8 @@ fi
 VERSION="$(node -p "require('./package.json').version")"
 TAG="v${VERSION}"
 ZIP_PATH="${ROOT}/retraction-alert.zip"
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+REMOTE="$(git config --get "branch.${BRANCH}.remote" || echo origin)"
 
 echo "Preparing release ${TAG}"
 
@@ -37,6 +39,9 @@ else
   echo "Creating tag ${TAG}..."
   git tag -a "${TAG}" -m "Release ${TAG}"
 fi
+
+echo "Pushing ${BRANCH} and tags to ${REMOTE}..."
+git push "${REMOTE}" "${BRANCH}" --follow-tags
 
 if command -v gh >/dev/null 2>&1; then
   echo "Creating GitHub release ${TAG} with ${ZIP_PATH}..."
