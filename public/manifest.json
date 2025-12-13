@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Retraction Alert",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Warns when the article being viewed has been officially retracted or flagged.",
   "icons": {
     "128": "icon-128.png"
